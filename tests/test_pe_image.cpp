@@ -150,3 +150,25 @@ SC_TEST_CASE("read_sections rejects a truncated section table") {
 
     SC_REQUIRE(!syscall::pe::read_sections(layout.bytes.data(), layout.bytes.size()).has_value());
 }
+
+SC_TEST_CASE("find_export returns the index of a known name") {
+    const auto layout = two_export_builder().build();
+    const auto exports = syscall::pe::read_exports(layout.bytes.data(), layout.bytes.size());
+    SC_REQUIRE(exports.has_value());
+
+    const auto index = syscall::pe::find_export(*exports, "NtBeta");
+    SC_REQUIRE(index.has_value());
+    SC_REQUIRE_EQ(static_cast<std::size_t>(1), *index);
+}
+
+SC_TEST_CASE("find_export returns nothing for an unknown name") {
+    const auto layout = two_export_builder().build();
+    const auto exports = syscall::pe::read_exports(layout.bytes.data(), layout.bytes.size());
+    SC_REQUIRE(exports.has_value());
+    SC_REQUIRE(!syscall::pe::find_export(*exports, "NtMissing").has_value());
+}
+
+SC_TEST_CASE("find_export returns nothing for an empty list") {
+    const std::vector<syscall::pe::Export> exports;
+    SC_REQUIRE(!syscall::pe::find_export(exports, "NtAlpha").has_value());
+}

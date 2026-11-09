@@ -22,5 +22,8 @@ std::optional<std::vector<SectionHeader>> read_sections(
     const std::uint8_t* image,
     std::size_t size);
 std::optional<std::vector<Export>> read_exports(const std::uint8_t* image, std::size_t size);
+std::optional<std::size_t> find_export(
+    const std::vector<Export>& exports,
+    std::string_view name);
 
 }
