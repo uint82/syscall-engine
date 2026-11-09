@@ -3,8 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
+#include "syscall/fresh_ntdll.hpp"
 #include "syscall/pe_image.hpp"
 
 namespace syscall {
@@ -12,6 +14,11 @@ namespace syscall {
 enum class Mode {
     kDirect,
     kIndirect,
+};
+
+enum class ImageSource {
+    kLive,
+    kFresh,
 };
 
 class Engine {
@@ -24,6 +31,7 @@ public:
     ~Engine();
 
     bool init(Mode mode = Mode::kDirect);
+    ImageSource source() const;
     void* resolve(const char* name);
     bool commit();
 
@@ -33,11 +41,23 @@ public:
     }
 
 private:
+    bool load_live_image();
+    void select_resolution_image();
+    bool load_exports(const std::uint8_t* image, std::size_t size);
+    fresh::Api resolve_fresh_api() const;
+    void* export_address(std::string_view name) const;
+    bool prepare_gadget();
+    bool allocate_trampolines();
     bool write_stub(std::span<std::uint8_t> slot, std::uint32_t ssn);
 
     Mode mode_ = Mode::kDirect;
-    const std::uint8_t* image_ = nullptr;
-    std::size_t image_size_ = 0;
+    ImageSource source_ = ImageSource::kLive;
+    const std::uint8_t* live_image_ = nullptr;
+    std::size_t live_size_ = 0;
+    const std::uint8_t* ssn_image_ = nullptr;
+    std::size_t ssn_size_ = 0;
+    fresh::Api fresh_api_{};
+    fresh::MappedImage fresh_view_{};
     std::vector<pe::Export> exports_;
     std::uint8_t* trampolines_ = nullptr;
     std::size_t trampoline_count_ = 0;

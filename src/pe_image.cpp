@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <iterator>
 
 namespace syscall::pe {
 namespace {
@@ -193,6 +194,18 @@ std::optional<std::vector<Export>> read_exports(
                   return left.rva < right.rva;
               });
     return exports;
+}
+
+std::optional<std::size_t> find_export(
+    const std::vector<Export>& exports,
+    std::string_view name) {
+    const auto match = std::find_if(
+        exports.begin(), exports.end(),
+        [name](const Export& entry) { return entry.name == name; });
+    if (match == exports.end()) {
+        return std::nullopt;
+    }
+    return static_cast<std::size_t>(std::distance(exports.begin(), match));
 }
 
 }

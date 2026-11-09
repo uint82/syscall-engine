@@ -4,22 +4,9 @@
 
 #include <algorithm>
 #include <cstring>
-#include <iterator>
 
 namespace syscall {
 namespace {
-
-std::optional<std::size_t> find_export_index(
-    const std::vector<pe::Export>& exports,
-    std::string_view name) {
-    const auto match = std::find_if(
-        exports.begin(), exports.end(),
-        [name](const pe::Export& entry) { return entry.name == name; });
-    if (match == exports.end()) {
-        return std::nullopt;
-    }
-    return static_cast<std::size_t>(std::distance(exports.begin(), match));
-}
 
 std::optional<std::uint32_t> read_stub_ssn(
     std::span<const std::uint8_t> image,
@@ -70,7 +57,7 @@ std::optional<std::uint32_t> resolve_ssn(
     std::span<const std::uint8_t> image,
     const std::vector<pe::Export>& exports,
     std::string_view name) {
-    const auto index = find_export_index(exports, name);
+    const auto index = pe::find_export(exports, name);
     if (!index.has_value()) {
         return std::nullopt;
     }

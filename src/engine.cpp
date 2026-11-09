@@ -9,6 +9,7 @@
 
 #include <bit>
 #include <span>
+#include <string_view>
 #include <utility>
 
 namespace syscall {
@@ -20,62 +21,35 @@ constexpr std::size_t kMaxTrampolines = kTrampolineRegionSize / kTrampolineStrid
 
 static_assert(sizeof(void*) == 8);
 
-std::optional<std::uint32_t> find_gadget(std::span<const std::uint8_t> image) {
-    const auto sections = pe::read_sections(image.data(), image.size());
-    if (!sections.has_value()) {
-        return std::nullopt;
-    }
-    return find_syscall_gadget(image, *sections);
-}
-
 }
 
 Engine::~Engine() {
+    fresh::unmap_ntdll(fresh_api_, fresh_view_);
     if (trampolines_ != nullptr) {
         VirtualFree(trampolines_, 0, MEM_RELEASE);
     }
 }
 
 bool Engine::init(Mode mode) {
-    const auto module = GetModuleHandleA("ntdll.dll");
-    if (module == nullptr) {
+    if (live_image_ != nullptr) {
         return false;
     }
-    image_ = reinterpret_cast<const std::uint8_t*>(module);
-
-    const auto image_size = pe::read_image_size(image_, kHeaderWindow);
-    if (!image_size.has_value()) {
+    if (!load_live_image()) {
         return false;
     }
-    image_size_ = *image_size;
-
-    auto exports = pe::read_exports(image_, image_size_);
-    if (!exports.has_value()) {
+    if (!load_exports(live_image_, live_size_)) {
         return false;
     }
-    exports_ = std::move(*exports);
-
-    const auto image = std::span<const std::uint8_t>(image_, image_size_);
-    if (mode == Mode::kIndirect) {
-        const auto gadget = find_gadget(image);
-        if (!gadget.has_value()) {
-            return false;
-        }
-        gadget_rva_ = *gadget;
+    select_resolution_image();
+    if (mode == Mode::kIndirect && !prepare_gadget()) {
+        return false;
     }
     mode_ = mode;
-
-    trampolines_ = static_cast<std::uint8_t*>(
-        VirtualAlloc(nullptr, kTrampolineRegionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-    return trampolines_ != nullptr;
+    return allocate_trampolines();
 }
 
-bool Engine::write_stub(std::span<std::uint8_t> slot, std::uint32_t ssn) {
-    if (mode_ == Mode::kIndirect) {
-        const auto gadget = std::bit_cast<std::uint64_t>(image_ + gadget_rva_);
-        return write_indirect_stub(slot, ssn, gadget);
-    }
-    return write_direct_stub(slot, ssn);
+ImageSource Engine::source() const {
+    return source_;
 }
 
 void* Engine::resolve(const char* name) {
@@ -87,7 +61,7 @@ void* Engine::resolve(const char* name) {
     }
 
     const auto ssn = resolve_ssn(
-        std::span<const std::uint8_t>(image_, image_size_), exports_, name);
+        std::span<const std::uint8_t>(ssn_image_, ssn_size_), exports_, name);
     if (!ssn.has_value()) {
         return nullptr;
     }
@@ -111,6 +85,89 @@ bool Engine::commit() {
     }
     is_committed_ = true;
     return true;
+}
+
+bool Engine::load_live_image() {
+    const auto module = GetModuleHandleA("ntdll.dll");
+    if (module == nullptr) {
+        return false;
+    }
+    live_image_ = reinterpret_cast<const std::uint8_t*>(module);
+    const auto image_size = pe::read_image_size(live_image_, kHeaderWindow);
+    if (!image_size.has_value()) {
+        return false;
+    }
+    live_size_ = *image_size;
+    return true;
+}
+
+bool Engine::load_exports(const std::uint8_t* image, std::size_t size) {
+    auto exports = pe::read_exports(image, size);
+    if (!exports.has_value()) {
+        return false;
+    }
+    exports_ = std::move(*exports);
+    return true;
+}
+
+fresh::Api Engine::resolve_fresh_api() const {
+    return {
+        export_address("NtOpenSection"),
+        export_address("NtMapViewOfSection"),
+        export_address("NtClose"),
+        export_address("NtUnmapViewOfSection"),
+    };
+}
+
+void* Engine::export_address(std::string_view name) const {
+    const auto index = pe::find_export(exports_, name);
+    if (!index.has_value()) {
+        return nullptr;
+    }
+    return const_cast<std::uint8_t*>(live_image_ + exports_[*index].rva);
+}
+
+void Engine::select_resolution_image() {
+    fresh_api_ = resolve_fresh_api();
+    fresh_view_ = fresh::map_ntdll(fresh_api_);
+    if (fresh_view_.bytes != nullptr && load_exports(fresh_view_.bytes, fresh_view_.size)) {
+        ssn_image_ = fresh_view_.bytes;
+        ssn_size_ = fresh_view_.size;
+        source_ = ImageSource::kFresh;
+        return;
+    }
+    fresh::unmap_ntdll(fresh_api_, fresh_view_);
+    ssn_image_ = live_image_;
+    ssn_size_ = live_size_;
+    source_ = ImageSource::kLive;
+}
+
+bool Engine::prepare_gadget() {
+    const auto sections = pe::read_sections(live_image_, live_size_);
+    if (!sections.has_value()) {
+        return false;
+    }
+    const auto gadget = find_syscall_gadget(
+        std::span<const std::uint8_t>(live_image_, live_size_), *sections);
+    if (!gadget.has_value()) {
+        return false;
+    }
+    gadget_rva_ = *gadget;
+    return true;
+}
+
+bool Engine::allocate_trampolines() {
+    trampolines_ = static_cast<std::uint8_t*>(
+        VirtualAlloc(nullptr, kTrampolineRegionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    return trampolines_ != nullptr;
+}
+
+bool Engine::write_stub(std::span<std::uint8_t> slot, std::uint32_t ssn) {
+    if (mode_ == Mode::kIndirect) {
+        const auto gadget = std::bit_cast<std::uint64_t>(live_image_ + gadget_rva_);
+        return write_indirect_stub(slot, ssn, gadget);
+    }
+    return write_direct_stub(slot, ssn);
 }
 
 }
