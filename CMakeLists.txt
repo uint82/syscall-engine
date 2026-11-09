@@ -28,11 +28,15 @@ target_include_directories(syscall_core PUBLIC include)
 syscall_enable_warnings(syscall_core)
 
 if(WIN32)
-    add_executable(syscall_loader
+    add_library(syscall_windows STATIC
         src/engine.cpp
-        src/main.cpp
+        src/fresh_ntdll.cpp
     )
-    target_link_libraries(syscall_loader PRIVATE syscall_core)
+    target_link_libraries(syscall_windows PUBLIC syscall_core)
+    syscall_enable_warnings(syscall_windows)
+
+    add_executable(syscall_loader src/main.cpp)
+    target_link_libraries(syscall_loader PRIVATE syscall_windows)
     syscall_enable_warnings(syscall_loader)
 endif()
 
