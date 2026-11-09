@@ -57,3 +57,16 @@ if(SYSCALL_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     syscall_enable_warnings(syscall_tests)
     add_test(NAME syscall_tests COMMAND syscall_tests)
 endif()
+
+if(WIN32 AND SYSCALL_BUILD_TESTS)
+    add_executable(syscall_windows_tests
+        tests/test_main.cpp
+        tests/windows/test_engine.cpp
+    )
+    target_include_directories(syscall_windows_tests PRIVATE tests/support)
+    target_link_libraries(syscall_windows_tests PRIVATE syscall_windows)
+    syscall_enable_warnings(syscall_windows_tests)
+    if(NOT CMAKE_CROSSCOMPILING)
+        add_test(NAME syscall_windows_tests COMMAND syscall_windows_tests)
+    endif()
+endif()
