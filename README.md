@@ -1,10 +1,10 @@
 # syscall-engine
 
-Direct and indirect syscall engine for Windows x64 with Halo's Gate system service number resolution.
+Direct and indirect syscall engine for Windows x64 with fresh ntdll system service number resolution.
 
 ## Overview
 
-EDR products hook ntdll to inspect sensitive calls such as `NtAllocateVirtualMemory`. This library resolves the system service number for any exported ntdll function and emits its own syscall stubs, so execution reaches the kernel without touching hooked code.
+EDR products hook ntdll to inspect sensitive calls such as `NtAllocateVirtualMemory`. This library maps a clean copy of ntdll from `\KnownDlls`, resolves the system service number for any exported function there, and emits its own syscall stubs, so execution reaches the kernel without touching hooked code.
 
 Direct mode executes `syscall` from the trampoline region. Indirect mode jumps into ntdll's own `syscall; ret` gadget, keeping both the transition and the return address inside ntdll.
 
@@ -12,9 +12,11 @@ Built for red team tooling, EDR validation, and Windows internals research.
 
 ## Features
 
+- Fresh ntdll resolution: maps `\KnownDlls\ntdll.dll` read-only and reads SSNs from the clean image, so inline hooks never reach the resolver
+- Live fallback: if the KnownDlls mapping is unavailable, resolution falls back to the loaded module and Halo's Gate
 - Direct syscall stubs
-- Indirect syscall stubs through a `syscall; ret` gadget found in an executable ntdll section
-- Halo's Gate fallback: recovers service numbers from neighboring stubs when the target stub is hooked
+- Indirect syscall stubs through a `syscall; ret` gadget found in an executable section of the live ntdll
+- Halo's Gate fallback: recovers service numbers from neighboring stubs when a live stub is hooked
 - Portable core: PE parsing, SSN resolution, and stub assembly have no Windows dependency and are unit tested natively
 - Explicit lifecycle: write stubs in read/write memory, then flip to read/execute with `commit`
 - No external dependencies, C++20
@@ -25,10 +27,11 @@ Built for red team tooling, EDR validation, and Windows internals research.
 | --- | --- |
 | `include/syscall/pe_types.hpp` | PE32+ structure layouts with compile-time size checks |
 | `include/syscall/pe_image.hpp` | Bounds-checked header, section, and export parsing |
-| `include/syscall/ssn_resolver.hpp` | Halo's Gate system service number resolution |
+| `include/syscall/ssn_resolver.hpp` | Direct stub reads and Halo's Gate neighbor recovery |
 | `include/syscall/gadget_finder.hpp` | `syscall; ret` gadget discovery in executable sections |
 | `include/syscall/trampoline.hpp` | Stub byte assembly for both modes |
-| `include/syscall/engine.hpp` | Windows-facing engine: mode selection, allocation, commit |
+| `include/syscall/fresh_ntdll.hpp` | KnownDlls section mapping and unmapping |
+| `include/syscall/engine.hpp` | Windows-facing engine: source selection, mode selection, allocation, commit |
 | `src/main.cpp` | Example loader using indirect syscalls |
 
 The portable core never includes `windows.h`. That keeps it testable on any platform and reusable in scanners or analysis tooling.
@@ -85,13 +88,16 @@ nt_allocate(GetCurrentProcess(), &base, 0, &size, MEM_COMMIT | MEM_RESERVE, PAGE
 
 Call resolved functions only after `commit`, because the trampoline region is read/write until then.
 
+`Engine::source()` reports whether the clean KnownDlls image or the live module supplied the SSNs. Both paths resolve and execute the same way; the difference is what an inline hook can see.
+
 ## How it works
 
-1. Parse the mapped ntdll image: headers, sections, export directory.
-2. Resolve the SSN for the requested function. A clean stub exposes it directly. A hooked stub is recovered from the nearest clean neighbor by export order, which is Halo's Gate.
-3. Emit a stub into the trampoline region.
-4. Flip the region to read/execute with `commit`.
-5. Call the stub like the original function.
+1. Parse the loaded ntdll to find the section mapping primitives and, in indirect mode, the gadget.
+2. Map `\KnownDlls\ntdll.dll` as a read-only image and parse its exports. KnownDlls keeps the section the loader maps, while hooks live in the per-process copy. Fall back to the live module if the mapping fails.
+3. Resolve the SSN for the requested function from the clean image. A clean stub exposes it directly; on the live fallback, a hooked stub is recovered from the nearest clean neighbor by export order, which is Halo's Gate.
+4. Emit a stub into the trampoline region.
+5. Flip the region to read/execute with `commit`.
+6. Call the stub like the original function.
 
 Direct stub layout:
 
@@ -115,17 +121,25 @@ Stubs live on a 32-byte stride, so direct and indirect formats share one region 
 
 ## Testing
 
-The native suite covers 39 cases:
+The native suite covers:
 
 - PE header validation, corrupted signatures, truncated buffers
 - Export parsing, ordinal bounds, unterminated names, missing directories
+- Export lookup by name, including empty and missing cases
 - Halo's Gate: direct resolution, previous and next neighbor recovery, chained hooked stubs, SSN underflow
 - Gadget discovery: executable section filtering, absent patterns, sections outside the image, oversized declared sizes
 - Stub assembly: exact byte sequences, undersized buffers, stride isolation
 
+The Windows suite, run in CI, covers:
+
+- Fresh source selection in both modes
+- Resolution of known and unknown exports
+- Direct and indirect stub execution through `NtQuerySystemTime`
+- Resolve and commit lifecycle guards
+
 ## Detection notes
 
-Direct syscalls return to an address outside ntdll and are visible to call stack heuristics. Indirect syscalls move the transition and return into ntdll, which defeats the common checks. A determined stack walker can still inspect surrounding frames. Return address spoofing is the next layer, not included here.
+Direct syscalls return to an address outside ntdll and are visible to call stack heuristics. Indirect syscalls move the transition and return into ntdll, which defeats the common checks. SSNs come from a clean KnownDlls image, so inline hooks never reach the resolver, while the indirect gadget still comes from the live module so the jump target stays inside ntdll's real address range. A determined stack walker can still inspect surrounding frames. Return address spoofing is the next layer, not included here.
 
 ## Legal
 
