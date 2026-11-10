@@ -166,12 +166,17 @@ bool patch_data_directory(
 }
 
 ImageBuilder& ImageBuilder::add_clean_export(std::string name, std::uint32_t ssn) {
-    entries_.push_back({std::move(name), ssn});
+    entries_.push_back({std::move(name), ssn, std::nullopt});
     return *this;
 }
 
 ImageBuilder& ImageBuilder::add_hooked_export(std::string name) {
-    entries_.push_back({std::move(name), std::nullopt});
+    entries_.push_back({std::move(name), std::nullopt, std::nullopt});
+    return *this;
+}
+
+ImageBuilder& ImageBuilder::add_alias_export(std::string name, std::size_t target) {
+    entries_.push_back({std::move(name), std::nullopt, target});
     return *this;
 }
 
@@ -219,6 +224,10 @@ Layout ImageBuilder::build() const {
 
     layout.stub_rvas.reserve(entries_.size());
     for (std::size_t index = 0; index < entries_.size(); ++index) {
+        if (entries_[index].alias_of.has_value()) {
+            layout.stub_rvas.push_back(layout.stub_rvas[*entries_[index].alias_of]);
+            continue;
+        }
         layout.stub_rvas.push_back(cursor);
         cursor += kStubStride;
     }
@@ -258,6 +267,9 @@ void ImageBuilder::write_name_strings(
 
 void ImageBuilder::write_stubs(std::vector<std::uint8_t>& bytes, const Layout& layout) const {
     for (std::size_t index = 0; index < entries_.size(); ++index) {
+        if (entries_[index].alias_of.has_value()) {
+            continue;
+        }
         const auto stub = entries_[index].ssn.has_value()
                               ? make_clean_stub(*entries_[index].ssn)
                               : make_hooked_stub();
