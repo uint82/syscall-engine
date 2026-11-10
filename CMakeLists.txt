@@ -82,10 +82,16 @@ if(WIN32 AND SYSCALL_BUILD_TESTS)
     add_executable(syscall_windows_tests
         tests/test_main.cpp
         tests/windows/test_engine.cpp
+        tests/windows/test_hook_poc.cpp
+        tests/windows/test_unwind_poc.cpp
+        tests/windows/test_loader_poc.cpp
     )
     target_include_directories(syscall_windows_tests PRIVATE tests/support)
-    target_link_libraries(syscall_windows_tests PRIVATE syscall_windows)
+    target_link_libraries(syscall_windows_tests PRIVATE syscall_windows ntdll)
     syscall_enable_warnings(syscall_windows_tests)
+    if(MINGW)
+        target_link_options(syscall_windows_tests PRIVATE -static)
+    endif()
     if(NOT CMAKE_CROSSCOMPILING)
         add_test(NAME syscall_windows_tests COMMAND syscall_windows_tests)
     endif()
