@@ -146,6 +146,13 @@ std::optional<std::uint32_t> find_syscall_gadget(
     return find_pattern(image, sections, kSyscallGadget);
 }
 
+std::optional<std::uint32_t> find_leaf_syscall_gadget(
+    std::span<const std::uint8_t> image,
+    const std::vector<pe::SectionHeader>& sections,
+    const std::vector<unwind::RuntimeFunction>& functions) {
+    return find_leaf_pattern(image, sections, kSyscallGadget, functions);
+}
+
 std::optional<SpoofGadgets> find_spoof_gadgets(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections) {
@@ -165,8 +172,7 @@ std::optional<UnwindSpoofGadgets> find_unwind_spoof_gadgets(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections,
     const std::vector<unwind::RuntimeFunction>& functions) {
-    const auto syscall =
-        find_leaf_pattern(image, sections, kSyscallGadget, functions);
+    const auto syscall = find_leaf_syscall_gadget(image, sections, functions);
     if (!syscall.has_value()) {
         return std::nullopt;
     }
