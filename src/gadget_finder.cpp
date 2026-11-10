@@ -1,5 +1,7 @@
 #include "syscall/gadget_finder.hpp"
 
+#include "executable_sections.hpp"
+
 #include <algorithm>
 #include <array>
 
@@ -10,44 +12,30 @@ constexpr std::uint32_t kSyscallReturnOffset = 2;
 
 static_assert(kSyscallGadget[kSyscallReturnOffset] == 0xC3);
 
-std::size_t section_span(
-    std::span<const std::uint8_t> image,
-    const pe::SectionHeader& section) {
-    const auto start = static_cast<std::size_t>(section.virtual_address);
-    if (start >= image.size()) {
-        return 0;
-    }
-    const auto declared =
-        section.virtual_size != 0 ? section.virtual_size : section.raw_size;
-    // The declared size can exceed the mapped image; clamp it to the mapped range.
-    return std::min(static_cast<std::size_t>(declared), image.size() - start);
-}
-
 template <typename Visitor>
 void visit_pattern(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections,
     std::span<const std::uint8_t> pattern,
     Visitor visit) {
-    for (const auto& section : sections) {
-        if ((section.characteristics & pe::kSectionExecute) == 0) {
-            continue;
-        }
-        const auto length = section_span(image, section);
-        if (length < pattern.size()) {
-            continue;
-        }
-        const auto code = image.subspan(section.virtual_address, length);
-        for (std::size_t offset = 0; offset + pattern.size() <= code.size(); ++offset) {
-            if (!std::equal(pattern.begin(), pattern.end(), code.begin() + offset)) {
-                continue;
+    detail::visit_executable_sections(
+        image, sections,
+        [&](std::uint32_t base, std::span<const std::uint8_t> code) {
+            if (code.size() < pattern.size()) {
+                return true;
             }
-            const auto rva = section.virtual_address + static_cast<std::uint32_t>(offset);
-            if (!visit(rva)) {
-                return;
+            for (std::size_t offset = 0; offset + pattern.size() <= code.size();
+                 ++offset) {
+                if (!std::equal(pattern.begin(), pattern.end(),
+                                code.begin() + offset)) {
+                    continue;
+                }
+                if (!visit(base + static_cast<std::uint32_t>(offset))) {
+                    return false;
+                }
             }
-        }
-    }
+            return true;
+        });
 }
 
 std::optional<std::uint32_t> find_pattern(
@@ -177,7 +165,8 @@ std::optional<UnwindSpoofGadgets> find_unwind_spoof_gadgets(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections,
     const std::vector<unwind::RuntimeFunction>& functions) {
-    const auto syscall = find_leaf_pattern(image, sections, kSyscallGadget, functions);
+    const auto syscall =
+        find_leaf_pattern(image, sections, kSyscallGadget, functions);
     if (!syscall.has_value()) {
         return std::nullopt;
     }
