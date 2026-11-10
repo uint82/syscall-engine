@@ -30,57 +30,83 @@ Engine::~Engine() {
     }
 }
 
-bool Engine::init(Mode mode) {
+Status Engine::init(Mode mode) {
     if (live_image_ != nullptr) {
-        return false;
+        return record(Status::kAlreadyInitialized);
     }
     if (!load_live_image()) {
-        return false;
+        return record(Status::kLiveImageUnavailable);
     }
     if (!load_exports(live_image_, live_size_)) {
-        return false;
+        return record(Status::kExportTableUnavailable);
     }
     select_resolution_image();
     if (mode == Mode::kIndirect && !prepare_gadget()) {
-        return false;
+        return record(Status::kGadgetNotFound);
     }
     mode_ = mode;
-    return allocate_trampolines();
+    if (!allocate_trampolines()) {
+        return record(Status::kTrampolineAllocationFailed);
+    }
+    return record(Status::kOk);
 }
 
 ImageSource Engine::source() const {
     return source_;
 }
 
+Status Engine::last_error() const {
+    return last_error_;
+}
+
 void* Engine::resolve(const char* name) {
     if (name == nullptr) {
+        record(Status::kInvalidArgument);
+        return nullptr;
+    }
+    if (exports_.empty()) {
+        record(Status::kNotInitialized);
         return nullptr;
     }
     const auto index = pe::find_export(exports_, name);
     if (!index.has_value()) {
+        record(Status::kUnknownExport);
         return nullptr;
     }
     return emit_stub(lookup_ssn(*index));
 }
 
 void* Engine::resolve(std::uint64_t hash) {
+    if (exports_.empty()) {
+        record(Status::kNotInitialized);
+        return nullptr;
+    }
     const auto index = pe::find_export_hashed(exports_, hash);
     if (!index.has_value()) {
+        record(Status::kUnknownExport);
         return nullptr;
     }
     return emit_stub(lookup_ssn(*index));
 }
 
-bool Engine::commit() {
-    if (trampolines_ == nullptr || is_committed_) {
-        return false;
+Status Engine::commit() {
+    if (trampolines_ == nullptr) {
+        return record(Status::kNotInitialized);
+    }
+    if (is_committed_) {
+        return record(Status::kAlreadyCommitted);
     }
     DWORD previous = 0;
     if (VirtualProtect(trampolines_, kTrampolineRegionSize, PAGE_EXECUTE_READ, &previous) == 0) {
-        return false;
+        return record(Status::kProtectionFailed);
     }
     is_committed_ = true;
-    return true;
+    return record(Status::kOk);
+}
+
+Status Engine::record(Status status) {
+    last_error_ = status;
+    return status;
 }
 
 bool Engine::load_live_image() {
@@ -164,19 +190,31 @@ std::optional<std::uint32_t> Engine::lookup_ssn(std::size_t index) const {
 }
 
 void* Engine::emit_stub(std::optional<std::uint32_t> ssn) {
-    if (trampolines_ == nullptr || is_committed_ || !ssn.has_value()) {
+    if (trampolines_ == nullptr) {
+        record(Status::kNotInitialized);
+        return nullptr;
+    }
+    if (is_committed_) {
+        record(Status::kAlreadyCommitted);
+        return nullptr;
+    }
+    if (!ssn.has_value()) {
+        record(Status::kNoSyscallNumber);
         return nullptr;
     }
     if (trampoline_count_ >= kMaxTrampolines) {
+        record(Status::kTrampolineExhausted);
         return nullptr;
     }
 
     auto slot = std::span<std::uint8_t>(
         trampolines_ + trampoline_count_ * kTrampolineStride, kTrampolineStride);
     if (!write_stub(slot, *ssn)) {
+        record(Status::kStubWriteFailed);
         return nullptr;
     }
     ++trampoline_count_;
+    record(Status::kOk);
     return slot.data();
 }
 

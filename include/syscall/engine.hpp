@@ -9,6 +9,7 @@
 
 #include "syscall/fresh_ntdll.hpp"
 #include "syscall/pe_image.hpp"
+#include "syscall/status.hpp"
 
 namespace syscall {
 
@@ -31,11 +32,12 @@ public:
     Engine& operator=(Engine&&) = delete;
     ~Engine();
 
-    bool init(Mode mode = Mode::kDirect);
+    Status init(Mode mode = Mode::kDirect);
     ImageSource source() const;
+    Status last_error() const;
     void* resolve(const char* name);
     void* resolve(std::uint64_t hash);
-    bool commit();
+    Status commit();
 
     template <typename Fn>
     Fn get(const char* name) {
@@ -48,6 +50,7 @@ public:
     }
 
 private:
+    Status record(Status status);
     bool load_live_image();
     void select_resolution_image();
     bool load_exports(const std::uint8_t* image, std::size_t size);
@@ -72,6 +75,7 @@ private:
     std::size_t trampoline_count_ = 0;
     std::uint32_t gadget_rva_ = 0;
     bool is_committed_ = false;
+    Status last_error_ = Status::kOk;
 };
 
 }

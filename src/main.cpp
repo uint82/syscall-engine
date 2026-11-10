@@ -105,7 +105,7 @@ private:
 
 int run() {
     syscall::Engine engine;
-    if (!engine.init(syscall::Mode::kIndirect)) {
+    if (engine.init(syscall::Mode::kIndirect) != syscall::Status::kOk) {
         return 1;
     }
 
@@ -113,7 +113,7 @@ int run() {
     if (!resolve_functions(engine, functions)) {
         return 2;
     }
-    if (!engine.commit()) {
+    if (engine.commit() != syscall::Status::kOk) {
         return 3;
     }
 
