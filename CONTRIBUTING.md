@@ -64,3 +64,9 @@ docs: document conventional commits
 - Run `ctest --test-dir build --output-on-failure` locally before pushing
 - Make sure both the Linux and Windows jobs pass in CI
 - Use a conventional commit style title for the pull request
+
+## Releases
+
+- Version tags use `vMAJOR.MINOR.PATCH`
+- Tagging `main` runs the release workflow, which tests both platforms, builds the loader, and publishes the binary with a SHA-256 checksum
+- Prerelease suffixes such as `-rc.1` mark the release as a prerelease
