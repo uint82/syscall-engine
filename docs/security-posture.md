@@ -80,6 +80,7 @@ T1055 is the closest match for the loader primitive. The engine does not impleme
 - [ATT&CK T1027](https://attack.mitre.org/techniques/T1027/)
 - [Microsoft x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention)
 - [Microsoft x64 exception handling](https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64)
+- Prior art and related work: see [Prior art](../README.md#prior-art) in the README.
 
 ## Reporting
 

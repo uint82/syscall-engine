@@ -188,6 +188,17 @@ The chain: the syscall gadget's `ret` pops `frames[0]` from `[rsp]`, each frame'
 
 In plain spoofed mode, the fake frames are plain `ret` sites inside ntdll. The terminator is a `leave; ret` site: it restores the saved RBP and the original return address, so the caller never sees the detour. Stubs live on a 256-byte stride in a 256 KiB trampoline region, which leaves 1024 slots.
 
+## Prior art
+
+The engine builds on public research. The main influences:
+
+- Return address spoofing and fake call frames: namazso's [Return Address Spoofing](https://github.com/namazso/ReturnAddressSpoofing) (2020) and [ThreadStackSpoofer](https://github.com/mgeeky/ThreadStackSpoofer) (2022).
+- Unwind-aware call stack spoofing: [SilentMoonwalk](https://github.com/klezvirus/SilentMoonwalk) (2022) uses `RtlVirtualUnwind` to build a synthetic stack with valid unwind metadata. It is the closest prior art for the unwind-valid mode.
+- SSN resolution: [Hell's Gate](https://github.com/am0nsec/HellsGate) (2020), Halo's Gate (Sektor7, 2021), and [SysWhispers](https://github.com/jthuraisamy/SysWhispers) (2020).
+- Fresh ntdll mapping and hashed export lookup are common in this family of tools.
+
+The contribution here is an independent, dependency-free implementation with a leaf-frame selection strategy: a `syscall; ret` gadget covered by a leaf ntdll function, four distinct leaf `ret` sites, and a stub layout that keeps every fake frame consistent with the live `.pdata`. The `RtlVirtualUnwind` test and the benign loader PoC validate the chain end to end. The term "unwind-valid" is descriptive, not a claim of a new class of technique.
+
 ## Testing
 
 The native suite covers:
