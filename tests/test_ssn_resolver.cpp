@@ -116,6 +116,24 @@ SC_TEST_CASE("resolve_ssn refuses neighbor estimates that disagree") {
     SC_REQUIRE(!resolve_in(layout, "NtHooked").has_value());
 }
 
+SC_TEST_CASE("resolve_ssn counts aliased exports as one neighbor step") {
+    support::ImageBuilder builder;
+    builder.add_clean_export("NtPrevious", 10);
+    builder.add_alias_export("ZwPrevious", 0);
+    builder.add_hooked_export("NtUserMode");
+    builder.add_alias_export("ZwUserMode", 2);
+    builder.add_clean_export("NtNext", 12);
+    const auto layout = builder.build();
+
+    const auto direct = resolve_in(layout, "NtUserMode");
+    SC_REQUIRE(direct.has_value());
+    SC_REQUIRE_EQ(std::uint32_t{11}, *direct);
+
+    const auto alias = resolve_in(layout, "ZwUserMode");
+    SC_REQUIRE(alias.has_value());
+    SC_REQUIRE_EQ(std::uint32_t{11}, *alias);
+}
+
 SC_TEST_CASE("resolve_ssn uses the only clean neighbor below the target") {
     support::ImageBuilder builder;
     builder.add_clean_export("NtFirst", 20);

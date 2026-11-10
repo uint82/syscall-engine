@@ -127,7 +127,7 @@ The `const char*` overloads remain for tooling. The hashed overloads keep functi
 
 1. Parse the loaded ntdll to find the section mapping primitives and, in indirect and both spoofed modes, the gadgets.
 2. Map `\KnownDlls\ntdll.dll` as a read-only image and parse its exports. KnownDlls keeps the section the loader maps, while hooks live in the per-process copy. Fall back to the live module if the mapping fails.
-3. Resolve the SSN for the requested function from the clean image, by name or by FNV-1a hash. A clean stub exposes it directly; on the live fallback, a hooked stub is recovered from the nearest clean neighbor by export order, which is Halo's Gate. When both neighbors are available, they must imply the same number, because a forwarded or non-stub export in between silently shifts the count.
+3. Resolve the SSN for the requested function from the clean image, by name or by FNV-1a hash. A clean stub exposes it directly; on the live fallback, a hooked stub is recovered from the nearest clean neighbor by exported address, which is Halo's Gate. Nt/Zw aliases share one address and count as one step. When both neighbors are available, they must imply the same number, because a forwarded or non-stub export in between silently shifts the count.
 4. Emit a stub into the trampoline region. Both spoofed modes also build a fake return frame and copy the caller's stack arguments into it. Unwind-valid mode selects a leaf syscall gadget and four leaf `ret` sites so each frame has a matching `.pdata` entry.
 5. Flip the region to read/execute with `commit`.
 6. Call the stub like the original function.

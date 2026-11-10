@@ -47,15 +47,23 @@ std::optional<CleanNeighbor> find_clean_neighbor(
     std::ptrdiff_t cursor = static_cast<std::ptrdiff_t>(index);
     const std::ptrdiff_t step =
         direction == Direction::kPrevious ? kPreviousStep : kNextStep;
-    for (std::size_t distance = 1; distance < exports.size(); ++distance) {
+    std::uint32_t distance = 0;
+    std::uint32_t rva = exports[index].rva;
+    for (std::size_t visited = 0; visited < exports.size(); ++visited) {
         cursor += step;
         if (cursor < 0 || static_cast<std::size_t>(cursor) >= exports.size()) {
             return std::nullopt;
         }
-        const auto ssn =
-            read_stub_ssn(image, exports[static_cast<std::size_t>(cursor)].rva);
+        const auto& candidate = exports[static_cast<std::size_t>(cursor)];
+        // Nt and Zw aliases share one code address and one syscall number.
+        if (candidate.rva == rva) {
+            continue;
+        }
+        rva = candidate.rva;
+        ++distance;
+        const auto ssn = read_stub_ssn(image, candidate.rva);
         if (ssn.has_value()) {
-            return CleanNeighbor{*ssn, static_cast<std::uint32_t>(distance)};
+            return CleanNeighbor{*ssn, distance};
         }
     }
     return std::nullopt;
@@ -81,9 +89,8 @@ std::optional<std::uint32_t> estimate_ssn(
     return neighbor->ssn - neighbor->distance;
 }
 
-// A non-stub or forwarded export between the target and a clean neighbor
-// breaks the one-entry-one-ssn assumption. When the two sides disagree about
-// the recovered number, either answer would ring the wrong kernel door.
+// Both sides must agree: an interleaved non-syscall export can shift one
+// side's count, and either answer would ring the wrong kernel door.
 std::optional<std::uint32_t> reconcile_estimates(
     const std::optional<std::uint32_t>& from_previous,
     const std::optional<std::uint32_t>& from_next) {
