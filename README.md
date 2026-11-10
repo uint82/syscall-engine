@@ -216,14 +216,15 @@ The Windows suite, run in CI, covers:
 - Direct, indirect, spoofed, and unwind-valid stub execution through `NtQuerySystemTime`
 - Stack argument forwarding through spoofed and unwind-valid `NtQueryVirtualMemory` calls
 - Resolve and commit lifecycle guards
+- Hook bypass: an inline hook on `NtAllocateVirtualMemory` blocks the normal call while the engine stub still allocates
+- Unwind-valid fake stack: `RtlVirtualUnwind` walks the exact four-frame chain and sentinel
+- Benign loader: allocate, write, protect, `NtCreateThreadEx`, wait, free, with a magic-value payload
 
-## Detection notes
+## Security posture
 
-Direct syscalls return to an address outside ntdll and are visible to call stack heuristics. Indirect syscalls move the transition and return into ntdll, which defeats the common checks. Spoofed indirect syscalls rebuild the return stack, so the walk sees three `ret` frames and a `leave; ret` terminator inside ntdll before the original stack pointer. Unwind-valid spoofed syscalls use a leaf `syscall; ret` gadget plus four leaf `ret` sites, so each fake frame has a matching `.pdata` entry.
+The engine is an evasion component, not a cloak of invisibility. It bypasses user-mode ntdll entry hooks and can build an unwind-valid fake stack, but kernel callbacks, ETW Threat Intelligence, memory scanning, behavioral analytics, and stack walkers with their own logic still see it. It is user-mode x64 only, requires existing code execution, and does not provide persistence, privilege escalation, C2, or payload encryption.
 
-The plain spoofed frame is synthetic, so walkers that validate unwind metadata per frame can flag it; unwind-valid mode addresses that check by making every fake frame a leaf frame consistent with the gadget's `.pdata` entry. The chain still lives in the stub's anonymous stack frame, so a walker that checks whether the return stack is in committed image memory can still flag it. User shadow stacks make every fake return fault, so the engine detects the mitigation and downgrades to plain indirect.
-
-SSNs come from a clean KnownDlls image, so inline hooks never reach the resolver, while the gadget still comes from the live module so the jump target stays inside ntdll's real address range. Hashed lookup keeps `Nt*` names out of the binary's string table for static signature scans.
+See [`docs/security-posture.md`](docs/security-posture.md) for the full scope, detection surface, defensive checks, and ATT&CK mapping. See [`SECURITY.md`](SECURITY.md) for reporting and safe harbor.
 
 ## Releases
 
@@ -238,7 +239,7 @@ Prerelease tags such as `v0.3.0-rc.1` are marked as prereleases automatically.
 
 ## Legal
 
-This project is intended for authorized security testing, EDR validation, and research on systems you own or have explicit written permission to test. You are responsible for how you use it.
+This project is intended for authorized security testing, EDR validation, and research on systems you own or have explicit written permission to test. You are responsible for how you use it. See [`SECURITY.md`](SECURITY.md) for reporting and safe harbor.
 
 ## License
 
