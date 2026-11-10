@@ -32,6 +32,15 @@ SC_TEST_CASE("fresh resolution finds exported syscalls") {
     SC_REQUIRE(engine.last_error() == syscall::Status::kUnknownExport);
 }
 
+SC_TEST_CASE("resolution caches stubs per export") {
+    syscall::Engine engine;
+    SC_REQUIRE(engine.init(syscall::Mode::kDirect) == syscall::Status::kOk);
+    void* by_name = engine.resolve("NtClose");
+    SC_REQUIRE(by_name != nullptr);
+    SC_REQUIRE(engine.resolve("NtClose") == by_name);
+    SC_REQUIRE(engine.resolve(SC_HASH("NtClose")) == by_name);
+}
+
 SC_TEST_CASE("a committed direct stub executes") {
     syscall::Engine engine;
     SC_REQUIRE(engine.init(syscall::Mode::kDirect) == syscall::Status::kOk);

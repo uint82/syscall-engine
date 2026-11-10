@@ -59,7 +59,7 @@ private:
     bool prepare_gadget();
     bool allocate_trampolines();
     std::optional<std::uint32_t> lookup_ssn(std::size_t index) const;
-    void* emit_stub(std::optional<std::uint32_t> ssn);
+    void* emit_stub(std::size_t index);
     bool write_stub(std::span<std::uint8_t> slot, std::uint32_t ssn);
 
     Mode mode_ = Mode::kDirect;
@@ -71,6 +71,7 @@ private:
     fresh::Api fresh_api_{};
     fresh::MappedImage fresh_view_{};
     std::vector<pe::Export> exports_;
+    std::vector<void*> stub_cache_;
     std::uint8_t* trampolines_ = nullptr;
     std::size_t trampoline_count_ = 0;
     std::uint32_t gadget_rva_ = 0;

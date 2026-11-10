@@ -48,6 +48,7 @@ Status Engine::init(Mode mode) {
     if (!allocate_trampolines()) {
         return record(Status::kTrampolineAllocationFailed);
     }
+    stub_cache_.assign(exports_.size(), nullptr);
     return record(Status::kOk);
 }
 
@@ -73,7 +74,7 @@ void* Engine::resolve(const char* name) {
         record(Status::kUnknownExport);
         return nullptr;
     }
-    return emit_stub(lookup_ssn(*index));
+    return emit_stub(*index);
 }
 
 void* Engine::resolve(std::uint64_t hash) {
@@ -86,7 +87,7 @@ void* Engine::resolve(std::uint64_t hash) {
         record(Status::kUnknownExport);
         return nullptr;
     }
-    return emit_stub(lookup_ssn(*index));
+    return emit_stub(*index);
 }
 
 Status Engine::commit() {
@@ -189,7 +190,7 @@ std::optional<std::uint32_t> Engine::lookup_ssn(std::size_t index) const {
         std::span<const std::uint8_t>(ssn_image_, ssn_size_), exports_, index);
 }
 
-void* Engine::emit_stub(std::optional<std::uint32_t> ssn) {
+void* Engine::emit_stub(std::size_t index) {
     if (trampolines_ == nullptr) {
         record(Status::kNotInitialized);
         return nullptr;
@@ -198,6 +199,11 @@ void* Engine::emit_stub(std::optional<std::uint32_t> ssn) {
         record(Status::kAlreadyCommitted);
         return nullptr;
     }
+    if (stub_cache_[index] != nullptr) {
+        record(Status::kOk);
+        return stub_cache_[index];
+    }
+    const auto ssn = lookup_ssn(index);
     if (!ssn.has_value()) {
         record(Status::kNoSyscallNumber);
         return nullptr;
@@ -214,6 +220,7 @@ void* Engine::emit_stub(std::optional<std::uint32_t> ssn) {
         return nullptr;
     }
     ++trampoline_count_;
+    stub_cache_[index] = slot.data();
     record(Status::kOk);
     return slot.data();
 }
