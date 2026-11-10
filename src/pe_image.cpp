@@ -1,5 +1,6 @@
 #include "syscall/pe_image.hpp"
 
+#include "syscall/hash.hpp"
 #include "syscall/pe_types.hpp"
 
 #include <algorithm>
@@ -114,6 +115,17 @@ std::optional<Export> read_export(
     return Export{*function_rva, *name};
 }
 
+template <typename Matcher>
+std::optional<std::size_t> find_export_if(
+    const std::vector<Export>& exports,
+    Matcher matches) {
+    const auto match = std::find_if(exports.begin(), exports.end(), matches);
+    if (match == exports.end()) {
+        return std::nullopt;
+    }
+    return static_cast<std::size_t>(std::distance(exports.begin(), match));
+}
+
 }
 
 std::optional<std::size_t> read_nt_offset(const std::uint8_t* image, std::size_t size) {
@@ -199,13 +211,15 @@ std::optional<std::vector<Export>> read_exports(
 std::optional<std::size_t> find_export(
     const std::vector<Export>& exports,
     std::string_view name) {
-    const auto match = std::find_if(
-        exports.begin(), exports.end(),
-        [name](const Export& entry) { return entry.name == name; });
-    if (match == exports.end()) {
-        return std::nullopt;
-    }
-    return static_cast<std::size_t>(std::distance(exports.begin(), match));
+    return find_export_if(
+        exports, [name](const Export& entry) { return entry.name == name; });
+}
+
+std::optional<std::size_t> find_export_hashed(
+    const std::vector<Export>& exports,
+    std::uint64_t hash) {
+    return find_export_if(
+        exports, [hash](const Export& entry) { return fnv1a(entry.name) == hash; });
 }
 
 }
