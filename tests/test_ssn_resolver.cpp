@@ -25,6 +25,18 @@ std::optional<std::uint32_t> resolve_in(
         *exports, name);
 }
 
+std::optional<std::uint32_t> resolve_index_in(
+    const support::Layout& layout,
+    std::size_t index) {
+    const auto exports = syscall::pe::read_exports(layout.bytes.data(), layout.bytes.size());
+    if (!exports.has_value()) {
+        return std::nullopt;
+    }
+    return syscall::resolve_ssn(
+        std::span<const std::uint8_t>(layout.bytes.data(), layout.bytes.size()),
+        *exports, index);
+}
+
 }
 
 SC_TEST_CASE("is_clean_stub accepts the canonical prologue") {
@@ -133,4 +145,31 @@ SC_TEST_CASE("resolve_ssn rejects a neighbor ssn below the step distance") {
     builder.add_clean_export("NtZero", 0);
     const auto layout = builder.build();
     SC_REQUIRE(!resolve_in(layout, "NtHooked").has_value());
+}
+
+SC_TEST_CASE("resolve_ssn by index reads a clean stub") {
+    support::ImageBuilder builder;
+    builder.add_clean_export("NtDirect", 0x2A);
+    const auto layout = builder.build();
+    const auto ssn = resolve_index_in(layout, 0);
+    SC_REQUIRE(ssn.has_value());
+    SC_REQUIRE_EQ(std::uint32_t{0x2A}, *ssn);
+}
+
+SC_TEST_CASE("resolve_ssn by index recovers a hooked stub") {
+    support::ImageBuilder builder;
+    builder.add_clean_export("NtFirst", 10);
+    builder.add_hooked_export("NtHooked");
+    builder.add_clean_export("NtLast", 12);
+    const auto layout = builder.build();
+    const auto ssn = resolve_index_in(layout, 1);
+    SC_REQUIRE(ssn.has_value());
+    SC_REQUIRE_EQ(std::uint32_t{11}, *ssn);
+}
+
+SC_TEST_CASE("resolve_ssn by index rejects an index outside the table") {
+    support::ImageBuilder builder;
+    builder.add_clean_export("NtOnly", 1);
+    const auto layout = builder.build();
+    SC_REQUIRE(!resolve_index_in(layout, 1).has_value());
 }

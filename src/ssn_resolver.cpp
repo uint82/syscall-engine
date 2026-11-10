@@ -61,14 +61,24 @@ std::optional<std::uint32_t> resolve_ssn(
     if (!index.has_value()) {
         return std::nullopt;
     }
+    return resolve_ssn(image, exports, *index);
+}
 
-    const auto direct = read_stub_ssn(image, exports[*index].rva);
+std::optional<std::uint32_t> resolve_ssn(
+    std::span<const std::uint8_t> image,
+    const std::vector<pe::Export>& exports,
+    std::size_t index) {
+    if (index >= exports.size()) {
+        return std::nullopt;
+    }
+
+    const auto direct = read_stub_ssn(image, exports[index].rva);
     if (direct.has_value()) {
         return direct;
     }
 
     for (std::size_t step = 1; step < exports.size(); ++step) {
-        const auto ssn = resolve_from_neighbor(image, exports, *index, step);
+        const auto ssn = resolve_from_neighbor(image, exports, index, step);
         if (ssn.has_value()) {
             return ssn;
         }

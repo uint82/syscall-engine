@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -16,5 +17,10 @@ std::optional<std::uint32_t> resolve_ssn(
     std::span<const std::uint8_t> image,
     const std::vector<pe::Export>& exports,
     std::string_view name);
+
+std::optional<std::uint32_t> resolve_ssn(
+    std::span<const std::uint8_t> image,
+    const std::vector<pe::Export>& exports,
+    std::size_t index);
 
 }
