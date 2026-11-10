@@ -124,6 +124,9 @@ Status Engine::commit() {
     if (is_committed_) {
         return record(Status::kAlreadyCommitted);
     }
+    if (trampoline_count_ > 0 && !gadgets_valid()) {
+        return record(Status::kGadgetInvalid);
+    }
     DWORD previous = 0;
     if (VirtualProtect(trampolines_, kTrampolineRegionSize, PAGE_EXECUTE_READ, &previous) == 0) {
         return record(Status::kProtectionFailed);
@@ -210,6 +213,10 @@ void* Engine::emit_stub(std::size_t index) {
     }
     if (is_committed_) {
         record(Status::kAlreadyCommitted);
+        return nullptr;
+    }
+    if (!gadgets_valid()) {
+        record(Status::kGadgetInvalid);
         return nullptr;
     }
     if (stub_cache_[index] != nullptr) {

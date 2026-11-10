@@ -5,6 +5,7 @@
 #include "syscall/pe_image.hpp"
 #include "syscall/pe_types.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -37,6 +38,47 @@ std::size_t section_table_offset(const support::Layout& layout) {
     return layout.nt_offset + sizeof(syscall::pe::NtHeaders64);
 }
 
+}
+
+SC_TEST_CASE("matches_bytes_at accepts a pattern inside the image") {
+    const std::array<std::uint8_t, 5> image{0x90, 0x0F, 0x05, 0xC3, 0x90};
+    SC_REQUIRE(syscall::matches_bytes_at(image, 1, syscall::kSyscallGadget));
+}
+
+SC_TEST_CASE("matches_bytes_at rejects a different byte") {
+    const std::array<std::uint8_t, 5> image{0x90, 0x0F, 0x05, 0x90, 0x90};
+    SC_REQUIRE(!syscall::matches_bytes_at(image, 1, syscall::kSyscallGadget));
+}
+
+SC_TEST_CASE("matches_bytes_at rejects a pattern past the image end") {
+    const std::array<std::uint8_t, 4> image{0x0F, 0x05, 0xC3, 0x90};
+    SC_REQUIRE(!syscall::matches_bytes_at(image, 4, syscall::kSyscallGadget));
+}
+
+SC_TEST_CASE("matches_bytes_at rejects an rva past the image end") {
+    const std::array<std::uint8_t, 4> image{0x0F, 0x05, 0xC3, 0x90};
+    SC_REQUIRE(!syscall::matches_bytes_at(image, 5, syscall::kSyscallGadget));
+}
+
+SC_TEST_CASE("matches_bytes_at rejects a pattern that crosses the image end") {
+    const std::array<std::uint8_t, 4> image{0x0F, 0x05, 0xC3, 0x90};
+    SC_REQUIRE(!syscall::matches_bytes_at(image, 2, syscall::kSyscallGadget));
+}
+
+SC_TEST_CASE("matches_bytes_at accepts a pattern ending at the image end") {
+    const std::array<std::uint8_t, 3> image{0x0F, 0x05, 0xC3};
+    SC_REQUIRE(syscall::matches_bytes_at(image, 0, syscall::kSyscallGadget));
+}
+
+SC_TEST_CASE("matches_bytes_at rejects an empty pattern") {
+    const std::array<std::uint8_t, 1> image{0x90};
+    SC_REQUIRE(!syscall::matches_bytes_at(
+        image, 0, std::span<const std::uint8_t>{}));
+}
+
+SC_TEST_CASE("matches_bytes_at rejects a pattern in an empty image") {
+    SC_REQUIRE(!syscall::matches_bytes_at(
+        std::span<const std::uint8_t>{}, 0, syscall::kSyscallGadget));
 }
 
 SC_TEST_CASE("find_syscall_gadget locates the gadget in an executable section") {

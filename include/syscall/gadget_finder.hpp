@@ -25,6 +25,12 @@ struct UnwindSpoofGadgets {
     std::array<std::uint32_t, kUnwindGadgetCount> frames{};
 };
 
+// An empty pattern would match everything, so it is rejected.
+bool matches_bytes_at(
+    std::span<const std::uint8_t> image,
+    std::uint32_t rva,
+    std::span<const std::uint8_t> expected);
+
 std::optional<std::uint32_t> find_syscall_gadget(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections);

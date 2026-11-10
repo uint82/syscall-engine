@@ -138,6 +138,20 @@ std::size_t collect_unwind_frames(
 
 }
 
+bool matches_bytes_at(
+    std::span<const std::uint8_t> image,
+    std::uint32_t rva,
+    std::span<const std::uint8_t> expected) {
+    if (expected.empty()) {
+        return false;
+    }
+    const auto start = static_cast<std::size_t>(rva);
+    if (start > image.size() || expected.size() > image.size() - start) {
+        return false;
+    }
+    return std::equal(expected.begin(), expected.end(), image.begin() + start);
+}
+
 std::optional<std::uint32_t> find_syscall_gadget(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections) {

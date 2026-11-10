@@ -19,6 +19,7 @@ Built for red team tooling, EDR validation, and Windows internals research.
 - Indirect syscall stubs through a `syscall; ret` gadget found in an executable section of the live ntdll
 - Stack-spoofed indirect stubs: three ntdll `ret` frames and a `leave; ret` terminator rebuild the return stack; the terminator restores the caller's RBP and return address, and stack arguments 5 through 12 are copied into the fake frame
 - Unwind-valid spoofed stubs: a leaf `syscall; ret` gadget plus four leaf `ret` sites, each with a matching `.pdata` entry, so a metadata-validating walker sees consistent frames
+- Gadget integrity: rechecks the syscall gadget, the spoofed frame sites, and the plain spoofed terminator before emitting a stub and again at commit when stubs exist
 - CET aware: a user shadow stack forces a requested spoofed mode to plain indirect; missing gadgets fall back one mode at a time, down to indirect
 - Status codes: operations return a `Status` or record it for `last_error()`, and `status_message` maps codes to text
 - Stub cache: repeated resolves before commit return the same trampoline
@@ -37,7 +38,7 @@ Built for red team tooling, EDR validation, and Windows internals research.
 | `include/syscall/hash.hpp` | constexpr FNV-1a hashing for export lookup |
 | `include/syscall/status.hpp` | Engine status codes and diagnostic messages |
 | `include/syscall/ssn_resolver.hpp` | Direct stub reads and Halo's Gate neighbor recovery |
-| `include/syscall/gadget_finder.hpp` | `syscall; ret`, `ret`, and `leave; ret` gadget discovery in executable sections |
+| `include/syscall/gadget_finder.hpp` | Gadget discovery and bounds-checked byte matching |
 | `include/syscall/unwind.hpp` | x64 `.pdata` and `UNWIND_INFO` parsing for leaf and RBP-frame gadgets |
 | `include/syscall/trampoline.hpp` | Stub byte assembly for all modes |
 | `include/syscall/fresh_ntdll.hpp` | KnownDlls section mapping and unmapping |
@@ -128,7 +129,7 @@ The `const char*` overloads are available for tooling. In optimized builds, the 
 1. Parse the loaded ntdll to find the section mapping primitives and, in indirect and both spoofed modes, the gadgets.
 2. Map `\KnownDlls\ntdll.dll` as a read-only image and parse its exports. KnownDlls contains the section the loader mapped; hooks modify the process's view. Fall back to the live module if the mapping or export parsing fails.
 3. Resolve the SSN for the requested function from the clean image, by name or by FNV-1a hash. A clean stub exposes it directly. On the live fallback, a hooked stub is recovered from the nearest clean neighbor by exported address, which is Halo's Gate. Nt/Zw aliases share one address and count as one step. When both neighbors are available, their estimates must agree. An export between a neighbor and the target that is not a syscall stub adds a step without an SSN, so that side's estimate is off by the number of such exports.
-4. Emit a stub into the trampoline region. Both spoofed modes also build a fake return frame and copy the caller's stack arguments into it. Unwind-valid mode selects a leaf syscall gadget and four leaf `ret` sites so each frame has a matching `.pdata` entry.
+4. Emit a stub into the trampoline region. Before each emission, and again at commit when stubs exist, the engine checks the syscall gadget, the spoofed frame sites, and the plain spoofed terminator. A mismatch returns `kGadgetInvalid` instead of jumping into modified code. Both spoofed modes also build a fake return frame and copy the caller's stack arguments into it. Unwind-valid mode selects a leaf syscall gadget and four leaf `ret` sites so each frame has a matching `.pdata` entry.
 5. Flip the region to read/execute with `commit`.
 6. Call the stub like the original function.
 
@@ -211,6 +212,7 @@ The native suite covers:
 - Halo's Gate: direct resolution, previous and next neighbor recovery, chained hooked stubs, disagreeing estimates, one-sided recovery, SSN underflow and overflow
 - SSN resolution by export index, including out-of-range indexes
 - Gadget discovery: executable section filtering, absent patterns, sections outside the image, oversized declared sizes
+- Gadget byte matching: exact matches, mismatches, empty patterns, and patterns that cross the image end
 - Spoof gadget discovery: frame and terminator collection across sections, missing terminator, too few frames
 - Unwind metadata parsing: `.pdata` bounds, overlaps, version 1 headers, leaf classification, RBP prolog validation, chained info rejection
 - Unwind gadget discovery: leaf syscall selection, leaf `ret` collection, distinct frame selection, syscall ret exclusion
@@ -227,6 +229,7 @@ The Windows suite, run in CI, covers:
 - Direct, indirect, spoofed, and unwind-valid stub execution through `NtQuerySystemTime`
 - Stack argument forwarding through spoofed and unwind-valid `NtQueryVirtualMemory` calls
 - Resolve and commit lifecycle guards
+- Gadget revalidation: a patched syscall, frame, or terminator byte fails resolution or commit, and recovery succeeds after the byte is restored
 - Hook bypass: an inline hook on `NtAllocateVirtualMemory` blocks the normal call while the engine stub still allocates
 - Unwind-valid fake stack: `RtlVirtualUnwind` walks the exact four-frame chain and sentinel
 - Benign loader: allocate, write, protect, `NtCreateThreadEx`, wait, close, free, with a magic-value payload

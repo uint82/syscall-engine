@@ -32,6 +32,8 @@ const char* status_message(Status status) {
             return "engine is already committed";
         case Status::kProtectionFailed:
             return "trampoline protection failed";
+        case Status::kGadgetInvalid:
+            return "syscall gadget bytes changed";
     }
     return "unknown status";
 }

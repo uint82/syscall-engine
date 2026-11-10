@@ -68,6 +68,7 @@ private:
     std::optional<std::uint32_t> lookup_ssn(std::size_t index) const;
     void* emit_stub(std::size_t index);
     bool write_stub(std::span<std::uint8_t> slot, std::uint32_t ssn);
+    bool gadgets_valid() const;
 
     Mode mode_ = Mode::kDirect;
     ImageSource source_ = ImageSource::kLive;

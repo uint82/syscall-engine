@@ -17,6 +17,7 @@ enum class Status {
     kNoSyscallNumber,
     kAlreadyCommitted,
     kProtectionFailed,
+    kGadgetInvalid,
 };
 
 const char* status_message(Status status);
