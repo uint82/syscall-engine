@@ -8,13 +8,16 @@
 #include <vector>
 
 #include "syscall/fresh_ntdll.hpp"
+#include "syscall/gadget_finder.hpp"
 #include "syscall/pe_image.hpp"
+#include "syscall/status.hpp"
 
 namespace syscall {
 
 enum class Mode {
     kDirect,
     kIndirect,
+    kIndirectSpoofed,
 };
 
 enum class ImageSource {
@@ -31,11 +34,13 @@ public:
     Engine& operator=(Engine&&) = delete;
     ~Engine();
 
-    bool init(Mode mode = Mode::kDirect);
+    Status init(Mode mode = Mode::kDirect);
     ImageSource source() const;
+    Mode mode() const;
+    Status last_error() const;
     void* resolve(const char* name);
     void* resolve(std::uint64_t hash);
-    bool commit();
+    Status commit();
 
     template <typename Fn>
     Fn get(const char* name) {
@@ -48,15 +53,18 @@ public:
     }
 
 private:
+    Status record(Status status);
     bool load_live_image();
     void select_resolution_image();
     bool load_exports(const std::uint8_t* image, std::size_t size);
     fresh::Api resolve_fresh_api() const;
     void* export_address(std::string_view name) const;
-    bool prepare_gadget();
+    Mode resolve_mode(Mode requested);
+    bool prepare_syscall_gadget();
+    bool prepare_spoof_gadgets();
     bool allocate_trampolines();
     std::optional<std::uint32_t> lookup_ssn(std::size_t index) const;
-    void* emit_stub(std::optional<std::uint32_t> ssn);
+    void* emit_stub(std::size_t index);
     bool write_stub(std::span<std::uint8_t> slot, std::uint32_t ssn);
 
     Mode mode_ = Mode::kDirect;
@@ -68,10 +76,13 @@ private:
     fresh::Api fresh_api_{};
     fresh::MappedImage fresh_view_{};
     std::vector<pe::Export> exports_;
+    std::vector<void*> stub_cache_;
     std::uint8_t* trampolines_ = nullptr;
     std::size_t trampoline_count_ = 0;
     std::uint32_t gadget_rva_ = 0;
+    SpoofGadgets spoof_gadgets_{};
     bool is_committed_ = false;
+    Status last_error_ = Status::kOk;
 };
 
 }

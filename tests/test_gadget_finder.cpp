@@ -24,6 +24,15 @@ std::optional<std::uint32_t> find_in(const support::Layout& layout) {
         std::span<const std::uint8_t>(layout.bytes.data(), layout.bytes.size()), *sections);
 }
 
+std::optional<syscall::SpoofGadgets> find_spoof_in(const support::Layout& layout) {
+    const auto sections = syscall::pe::read_sections(layout.bytes.data(), layout.bytes.size());
+    if (!sections.has_value()) {
+        return std::nullopt;
+    }
+    return syscall::find_spoof_gadgets(
+        std::span<const std::uint8_t>(layout.bytes.data(), layout.bytes.size()), *sections);
+}
+
 std::size_t section_table_offset(const support::Layout& layout) {
     return layout.nt_offset + sizeof(syscall::pe::NtHeaders64);
 }
@@ -83,4 +92,60 @@ SC_TEST_CASE("find_syscall_gadget clamps the declared section size") {
     const auto gadget = find_in(layout);
     SC_REQUIRE(gadget.has_value());
     SC_REQUIRE_EQ(layout.section_rvas[0] + 1, *gadget);
+}
+
+SC_TEST_CASE("find_spoof_gadgets collects ret frames and a leave ret terminator") {
+    support::ImageBuilder builder;
+    builder.add_section({"code", kExecutable,
+                         {0x90, 0xC3, 0x90, 0xC3, 0x90, 0xC3, 0xC9, 0xC3}});
+    const auto layout = builder.build();
+    const auto gadgets = find_spoof_in(layout);
+    SC_REQUIRE(gadgets.has_value());
+    SC_REQUIRE_EQ(layout.section_rvas[0] + 1, gadgets->frames[0]);
+    SC_REQUIRE_EQ(layout.section_rvas[0] + 3, gadgets->frames[1]);
+    SC_REQUIRE_EQ(layout.section_rvas[0] + 5, gadgets->frames[2]);
+    SC_REQUIRE_EQ(layout.section_rvas[0] + 6, gadgets->terminator);
+}
+
+SC_TEST_CASE("find_spoof_gadgets rejects a missing terminator") {
+    support::ImageBuilder builder;
+    builder.add_section({"code", kExecutable, {0xC3, 0xC3, 0xC3, 0x90}});
+    const auto layout = builder.build();
+    SC_REQUIRE(!find_spoof_in(layout).has_value());
+}
+
+SC_TEST_CASE("find_spoof_gadgets rejects too few frame gadgets") {
+    support::ImageBuilder builder;
+    builder.add_section({"code", kExecutable, {0xC3, 0x90, 0xC9, 0xC3}});
+    const auto layout = builder.build();
+    SC_REQUIRE(!find_spoof_in(layout).has_value());
+}
+
+SC_TEST_CASE("find_spoof_gadgets ignores non executable sections") {
+    support::ImageBuilder builder;
+    builder.add_section({"data", kReadOnly, {0xC3, 0xC3, 0xC3, 0xC9, 0xC3}});
+    builder.add_section({"code", kExecutable, {0x90, 0x90}});
+    const auto layout = builder.build();
+    SC_REQUIRE(!find_spoof_in(layout).has_value());
+}
+
+SC_TEST_CASE("find_spoof_gadgets spans executable sections") {
+    support::ImageBuilder builder;
+    builder.add_section({"first", kExecutable, {0xC3, 0xC3}});
+    builder.add_section({"second", kExecutable, {0xC3, 0xC9, 0xC3}});
+    const auto layout = builder.build();
+    const auto gadgets = find_spoof_in(layout);
+    SC_REQUIRE(gadgets.has_value());
+    SC_REQUIRE_EQ(layout.section_rvas[0], gadgets->frames[0]);
+    SC_REQUIRE_EQ(layout.section_rvas[0] + 1, gadgets->frames[1]);
+    SC_REQUIRE_EQ(layout.section_rvas[1], gadgets->frames[2]);
+    SC_REQUIRE_EQ(layout.section_rvas[1] + 1, gadgets->terminator);
+}
+
+SC_TEST_CASE("find_spoof_gadgets skips sections outside the image") {
+    support::ImageBuilder builder;
+    builder.add_section({"code", kExecutable, {0xC3, 0xC3, 0xC3, 0xC9, 0xC3}});
+    auto layout = builder.build();
+    layout.bytes.resize(layout.section_rvas[0]);
+    SC_REQUIRE(!find_spoof_in(layout).has_value());
 }
