@@ -32,6 +32,7 @@ if(WIN32)
     add_library(syscall_windows STATIC
         src/engine.cpp
         src/fresh_ntdll.cpp
+        src/mitigations.cpp
     )
     target_link_libraries(syscall_windows PUBLIC syscall_core)
     syscall_enable_warnings(syscall_windows)

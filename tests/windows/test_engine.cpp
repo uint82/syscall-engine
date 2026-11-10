@@ -8,6 +8,8 @@
 namespace {
 
 using NtQuerySystemTimeFn = LONG(NTAPI*)(LARGE_INTEGER*);
+using NtQueryVirtualMemoryFn =
+    LONG(NTAPI*)(HANDLE, const void*, int, void*, std::size_t, std::size_t*);
 
 }
 
@@ -63,6 +65,60 @@ SC_TEST_CASE("a committed indirect stub executes") {
     LARGE_INTEGER time{};
     SC_REQUIRE(query(&time) >= 0);
     SC_REQUIRE(time.QuadPart != 0);
+}
+
+SC_TEST_CASE("init reports the active mode") {
+    syscall::Engine direct;
+    SC_REQUIRE(direct.init(syscall::Mode::kDirect) == syscall::Status::kOk);
+    SC_REQUIRE(direct.mode() == syscall::Mode::kDirect);
+
+    syscall::Engine indirect;
+    SC_REQUIRE(indirect.init(syscall::Mode::kIndirect) == syscall::Status::kOk);
+    SC_REQUIRE(indirect.mode() == syscall::Mode::kIndirect);
+
+    syscall::Engine spoofed;
+    SC_REQUIRE(spoofed.init(syscall::Mode::kIndirectSpoofed) == syscall::Status::kOk);
+    SC_REQUIRE(spoofed.mode() == syscall::Mode::kIndirectSpoofed);
+}
+
+SC_TEST_CASE("a committed spoofed stub executes") {
+    syscall::Engine engine;
+    SC_REQUIRE(engine.init(syscall::Mode::kIndirectSpoofed) == syscall::Status::kOk);
+    const auto query = engine.get<NtQuerySystemTimeFn>("NtQuerySystemTime");
+    SC_REQUIRE(query != nullptr);
+    SC_REQUIRE(engine.commit() == syscall::Status::kOk);
+
+    LARGE_INTEGER time{};
+    SC_REQUIRE(query(&time) >= 0);
+    SC_REQUIRE(time.QuadPart != 0);
+}
+
+SC_TEST_CASE("a committed hashed spoofed stub executes") {
+    syscall::Engine engine;
+    SC_REQUIRE(engine.init(syscall::Mode::kIndirectSpoofed) == syscall::Status::kOk);
+    const auto query =
+        engine.get<NtQuerySystemTimeFn>(SC_HASH("NtQuerySystemTime"));
+    SC_REQUIRE(query != nullptr);
+    SC_REQUIRE(engine.commit() == syscall::Status::kOk);
+
+    LARGE_INTEGER time{};
+    SC_REQUIRE(query(&time) >= 0);
+    SC_REQUIRE(time.QuadPart != 0);
+}
+
+SC_TEST_CASE("a committed spoofed stub forwards stack arguments") {
+    syscall::Engine engine;
+    SC_REQUIRE(engine.init(syscall::Mode::kIndirectSpoofed) == syscall::Status::kOk);
+    const auto query = engine.get<NtQueryVirtualMemoryFn>("NtQueryVirtualMemory");
+    SC_REQUIRE(query != nullptr);
+    SC_REQUIRE(engine.commit() == syscall::Status::kOk);
+
+    MEMORY_BASIC_INFORMATION info{};
+    std::size_t returned = 0;
+    const LONG status = query(GetCurrentProcess(), GetModuleHandleA(nullptr), 0, &info,
+                              sizeof(info), &returned);
+    SC_REQUIRE(status >= 0);
+    SC_REQUIRE(returned > 0);
 }
 
 SC_TEST_CASE("resolve is rejected after commit") {
