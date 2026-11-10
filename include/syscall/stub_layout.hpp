@@ -21,5 +21,6 @@ inline constexpr std::size_t kDirectStubSize =
 inline constexpr std::size_t kIndirectStubSize =
     kStubPrefix.size() + sizeof(std::uint32_t) + kJumpRipLength + sizeof(std::uint64_t);
 inline constexpr std::size_t kTrampolineStride = 32;
+inline constexpr std::size_t kSpoofFrameCount = 3;
 
 }
