@@ -1,5 +1,6 @@
 #include "syscall/pe_image.hpp"
 
+#include "pe_reader.hpp"
 #include "syscall/hash.hpp"
 #include "syscall/pe_types.hpp"
 
@@ -15,16 +16,6 @@ struct ParsedHeaders {
     std::size_t nt_offset;
     NtHeaders64 headers;
 };
-
-template <typename T>
-std::optional<T> read_struct(const std::uint8_t* image, std::size_t size, std::size_t offset) {
-    if (offset > size || size - offset < sizeof(T)) {
-        return std::nullopt;
-    }
-    T value{};
-    std::memcpy(&value, image + offset, sizeof(T));
-    return value;
-}
 
 template <typename T>
 std::optional<T> read_array_element(
@@ -139,14 +130,25 @@ std::optional<std::size_t> read_nt_offset(const std::uint8_t* image, std::size_t
     return static_cast<std::size_t>(dos->nt_offset);
 }
 
+std::optional<DataDirectory> read_data_directory(
+    const std::uint8_t* image,
+    std::size_t size,
+    std::size_t index) {
+    const auto optional = read_optional_header(image, size);
+    if (!optional.has_value() || index >= optional->rva_count) {
+        return std::nullopt;
+    }
+    return optional->directories[index];
+}
+
 std::optional<std::uint32_t> read_export_directory_rva(
     const std::uint8_t* image,
     std::size_t size) {
-    const auto optional = read_optional_header(image, size);
-    if (!optional.has_value() || optional->rva_count <= kExportDirectoryIndex) {
+    const auto directory = read_data_directory(image, size, kExportDirectoryIndex);
+    if (!directory.has_value()) {
         return std::nullopt;
     }
-    return optional->directories[kExportDirectoryIndex].rva;
+    return directory->rva;
 }
 
 std::optional<std::size_t> read_image_size(const std::uint8_t* image, std::size_t size) {

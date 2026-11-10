@@ -145,6 +145,26 @@ void write_u32_at(std::vector<std::uint8_t>& bytes, std::size_t offset, std::uin
     std::memcpy(bytes.data() + offset, &value, sizeof(value));
 }
 
+bool patch_data_directory(
+    std::vector<std::uint8_t>& bytes,
+    const Layout& layout,
+    std::size_t index,
+    std::uint32_t rva,
+    std::uint32_t size) {
+    const std::size_t optional =
+        layout.nt_offset + sizeof(std::uint32_t) + sizeof(syscall::pe::FileHeader);
+    const std::size_t directory =
+        optional + offsetof(syscall::pe::OptionalHeader64, directories) +
+        index * sizeof(syscall::pe::DataDirectory);
+    if (index >= syscall::pe::kDataDirectoryCount || directory > bytes.size() ||
+        bytes.size() - directory < sizeof(syscall::pe::DataDirectory)) {
+        return false;
+    }
+    write_u32_at(bytes, directory, rva);
+    write_u32_at(bytes, directory + sizeof(std::uint32_t), size);
+    return true;
+}
+
 ImageBuilder& ImageBuilder::add_clean_export(std::string name, std::uint32_t ssn) {
     entries_.push_back({std::move(name), ssn});
     return *this;
