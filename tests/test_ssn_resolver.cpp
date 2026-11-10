@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -143,6 +144,14 @@ SC_TEST_CASE("resolve_ssn keeps a previous estimate when the next underflows") {
     const auto ssn = resolve_in(layout, "NtHooked");
     SC_REQUIRE(ssn.has_value());
     SC_REQUIRE_EQ(std::uint32_t{41}, *ssn);
+}
+
+SC_TEST_CASE("resolve_ssn refuses a previous estimate that would overflow") {
+    support::ImageBuilder builder;
+    builder.add_clean_export("NtTop", std::numeric_limits<std::uint32_t>::max());
+    builder.add_hooked_export("NtHooked");
+    const auto layout = builder.build();
+    SC_REQUIRE(!resolve_in(layout, "NtHooked").has_value());
 }
 
 SC_TEST_CASE("resolve_ssn returns nothing for an unknown name") {

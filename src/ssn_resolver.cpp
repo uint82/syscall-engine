@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 namespace syscall {
 namespace {
@@ -67,6 +68,11 @@ std::optional<std::uint32_t> estimate_ssn(
         return std::nullopt;
     }
     if (direction == Direction::kPrevious) {
+        const auto headroom =
+            std::numeric_limits<std::uint32_t>::max() - neighbor->ssn;
+        if (neighbor->distance > headroom) {
+            return std::nullopt;
+        }
         return neighbor->ssn + neighbor->distance;
     }
     if (neighbor->ssn < neighbor->distance) {
