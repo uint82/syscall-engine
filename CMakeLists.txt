@@ -40,6 +40,7 @@ syscall_enable_warnings(syscall_core)
 if(WIN32)
     add_library(syscall_windows STATIC
         src/engine.cpp
+        src/engine_gadgets.cpp
         src/fresh_ntdll.cpp
         src/mitigations.cpp
     )

@@ -1,7 +1,6 @@
 #include "syscall/engine.hpp"
 
 #include "syscall/gadget_finder.hpp"
-#include "syscall/mitigations.hpp"
 #include "syscall/ssn_resolver.hpp"
 #include "syscall/stub_layout.hpp"
 #include "syscall/trampoline.hpp"
@@ -32,6 +31,16 @@ SpoofAddresses to_spoof_addresses(const std::uint8_t* image, const SpoofGadgets&
         addresses.frames[index] = std::bit_cast<std::uint64_t>(image + gadgets.frames[index]);
     }
     addresses.terminator = std::bit_cast<std::uint64_t>(image + gadgets.terminator);
+    return addresses;
+}
+
+UnwindSpoofAddresses to_unwind_addresses(
+    const std::uint8_t* image,
+    const UnwindSpoofGadgets& gadgets) {
+    UnwindSpoofAddresses addresses{};
+    for (std::size_t index = 0; index < gadgets.frames.size(); ++index) {
+        addresses.frames[index] = std::bit_cast<std::uint64_t>(image + gadgets.frames[index]);
+    }
     return addresses;
 }
 
@@ -183,44 +192,6 @@ void Engine::select_resolution_image() {
     source_ = ImageSource::kLive;
 }
 
-bool Engine::prepare_syscall_gadget() {
-    const auto sections = pe::read_sections(live_image_, live_size_);
-    if (!sections.has_value()) {
-        return false;
-    }
-    const auto gadget = find_syscall_gadget(
-        std::span<const std::uint8_t>(live_image_, live_size_), *sections);
-    if (!gadget.has_value()) {
-        return false;
-    }
-    gadget_rva_ = *gadget;
-    return true;
-}
-
-bool Engine::prepare_spoof_gadgets() {
-    const auto sections = pe::read_sections(live_image_, live_size_);
-    if (!sections.has_value()) {
-        return false;
-    }
-    const auto gadgets = find_spoof_gadgets(
-        std::span<const std::uint8_t>(live_image_, live_size_), *sections);
-    if (!gadgets.has_value()) {
-        return false;
-    }
-    spoof_gadgets_ = *gadgets;
-    return true;
-}
-
-Mode Engine::resolve_mode(Mode requested) {
-    if (requested != Mode::kIndirectSpoofed) {
-        return requested;
-    }
-    if (is_user_shadow_stack_enabled() || !prepare_spoof_gadgets()) {
-        return Mode::kIndirect;
-    }
-    return Mode::kIndirectSpoofed;
-}
-
 bool Engine::allocate_trampolines() {
     trampolines_ = static_cast<std::uint8_t*>(
         VirtualAlloc(nullptr, kTrampolineRegionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
@@ -274,6 +245,10 @@ bool Engine::write_stub(std::span<std::uint8_t> slot, std::uint32_t ssn) {
     const auto gadget = std::bit_cast<std::uint64_t>(live_image_ + gadget_rva_);
     if (mode_ == Mode::kIndirect) {
         return write_indirect_stub(slot, ssn, gadget);
+    }
+    if (mode_ == Mode::kIndirectUnwindSpoofed) {
+        return write_unwind_spoofed_stub(
+            slot, ssn, gadget, to_unwind_addresses(live_image_, unwind_gadgets_));
     }
     return write_spoofed_stub(
         slot, ssn, gadget, to_spoof_addresses(live_image_, spoof_gadgets_));

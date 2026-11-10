@@ -18,6 +18,7 @@ enum class Mode {
     kDirect,
     kIndirect,
     kIndirectSpoofed,
+    kIndirectUnwindSpoofed,
 };
 
 enum class ImageSource {
@@ -62,6 +63,7 @@ private:
     Mode resolve_mode(Mode requested);
     bool prepare_syscall_gadget();
     bool prepare_spoof_gadgets();
+    bool prepare_unwind_gadgets();
     bool allocate_trampolines();
     std::optional<std::uint32_t> lookup_ssn(std::size_t index) const;
     void* emit_stub(std::size_t index);
@@ -81,6 +83,7 @@ private:
     std::size_t trampoline_count_ = 0;
     std::uint32_t gadget_rva_ = 0;
     SpoofGadgets spoof_gadgets_{};
+    UnwindSpoofGadgets unwind_gadgets_{};
     bool is_committed_ = false;
     Status last_error_ = Status::kOk;
 };

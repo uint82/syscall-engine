@@ -79,6 +79,10 @@ SC_TEST_CASE("init reports the active mode") {
     syscall::Engine spoofed;
     SC_REQUIRE(spoofed.init(syscall::Mode::kIndirectSpoofed) == syscall::Status::kOk);
     SC_REQUIRE(spoofed.mode() == syscall::Mode::kIndirectSpoofed);
+
+    syscall::Engine unwind;
+    SC_REQUIRE(unwind.init(syscall::Mode::kIndirectUnwindSpoofed) == syscall::Status::kOk);
+    SC_REQUIRE(unwind.mode() == syscall::Mode::kIndirectUnwindSpoofed);
 }
 
 SC_TEST_CASE("a committed spoofed stub executes") {
@@ -109,6 +113,33 @@ SC_TEST_CASE("a committed hashed spoofed stub executes") {
 SC_TEST_CASE("a committed spoofed stub forwards stack arguments") {
     syscall::Engine engine;
     SC_REQUIRE(engine.init(syscall::Mode::kIndirectSpoofed) == syscall::Status::kOk);
+    const auto query = engine.get<NtQueryVirtualMemoryFn>("NtQueryVirtualMemory");
+    SC_REQUIRE(query != nullptr);
+    SC_REQUIRE(engine.commit() == syscall::Status::kOk);
+
+    MEMORY_BASIC_INFORMATION info{};
+    std::size_t returned = 0;
+    const LONG status = query(GetCurrentProcess(), GetModuleHandleA(nullptr), 0, &info,
+                              sizeof(info), &returned);
+    SC_REQUIRE(status >= 0);
+    SC_REQUIRE(returned > 0);
+}
+
+SC_TEST_CASE("a committed unwind spoofed stub executes") {
+    syscall::Engine engine;
+    SC_REQUIRE(engine.init(syscall::Mode::kIndirectUnwindSpoofed) == syscall::Status::kOk);
+    const auto query = engine.get<NtQuerySystemTimeFn>("NtQuerySystemTime");
+    SC_REQUIRE(query != nullptr);
+    SC_REQUIRE(engine.commit() == syscall::Status::kOk);
+
+    LARGE_INTEGER time{};
+    SC_REQUIRE(query(&time) >= 0);
+    SC_REQUIRE(time.QuadPart != 0);
+}
+
+SC_TEST_CASE("a committed unwind spoofed stub forwards stack arguments") {
+    syscall::Engine engine;
+    SC_REQUIRE(engine.init(syscall::Mode::kIndirectUnwindSpoofed) == syscall::Status::kOk);
     const auto query = engine.get<NtQueryVirtualMemoryFn>("NtQueryVirtualMemory");
     SC_REQUIRE(query != nullptr);
     SC_REQUIRE(engine.commit() == syscall::Status::kOk);
