@@ -33,6 +33,7 @@ public:
 
     ImageBuilder& add_clean_export(std::string name, std::uint32_t ssn);
     ImageBuilder& add_hooked_export(std::string name);
+    ImageBuilder& add_alias_export(std::string name);
     ImageBuilder& add_section(SectionSpec section);
     ImageBuilder& with_nt_offset(std::uint32_t offset);
     ImageBuilder& with_image_size(std::uint32_t size);
@@ -42,6 +43,7 @@ private:
     struct Entry {
         std::string name;
         std::optional<std::uint32_t> ssn;
+        std::optional<std::size_t> alias_of;
     };
 
     void write_name_strings(
