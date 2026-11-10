@@ -15,9 +15,19 @@ struct RuntimeFunction {
 
 static_assert(sizeof(RuntimeFunction) == 12);
 
+struct FrameLayout {
+    std::size_t frame_size = 0;
+    std::size_t local_alloc = 0;
+    std::size_t push_count = 0;
+};
+
 std::optional<std::vector<RuntimeFunction>> read_runtime_functions(
     const std::uint8_t* image,
     std::size_t size);
+std::optional<FrameLayout> read_simple_frame_layout(
+    const std::uint8_t* image,
+    std::size_t size,
+    const RuntimeFunction& function);
 std::optional<std::size_t> find_runtime_function(
     const std::vector<RuntimeFunction>& functions,
     std::uint32_t rva);

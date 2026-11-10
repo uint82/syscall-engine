@@ -8,10 +8,6 @@
 #include <cstdint>
 #include <vector>
 
-namespace {
-
-}
-
 SC_TEST_CASE("read_runtime_functions returns an empty table without a directory") {
     support::ImageBuilder builder;
     builder.add_section({"text", support::kCodeSection, {0x90}});

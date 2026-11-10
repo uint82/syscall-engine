@@ -61,6 +61,32 @@ inline std::vector<std::uint8_t> make_unwind_info(
     return info;
 }
 
+inline std::vector<std::uint8_t> make_alloc_large_unwind(
+    std::uint8_t info,
+    std::uint32_t size,
+    std::uint8_t prolog_size = 4) {
+    const auto operand_slots = info == 0 ? std::size_t{1} : std::size_t{2};
+    std::vector<std::uint8_t> unwind{
+        1,
+        prolog_size,
+        static_cast<std::uint8_t>(1 + operand_slots),
+        0,
+        prolog_size,
+        static_cast<std::uint8_t>((info << 4) | kAllocLarge),
+    };
+    if (info == 0) {
+        const auto units = static_cast<std::uint16_t>(size / 8);
+        unwind.push_back(static_cast<std::uint8_t>(units & 0xFF));
+        unwind.push_back(static_cast<std::uint8_t>((units >> 8) & 0xFF));
+        return unwind;
+    }
+    for (std::size_t index = 0; index < 4; ++index) {
+        unwind.push_back(
+            static_cast<std::uint8_t>((size >> (index * 8)) & 0xFF));
+    }
+    return unwind;
+}
+
 inline std::vector<CodeSpec> canonical_rbp_codes() {
     return {
         {4, kAllocSmall, 3, 0},
