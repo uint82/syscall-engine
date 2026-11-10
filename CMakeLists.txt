@@ -23,6 +23,7 @@ add_library(syscall_core
     src/ssn_resolver.cpp
     src/trampoline.cpp
     src/gadget_finder.cpp
+    src/status.cpp
 )
 target_include_directories(syscall_core PUBLIC include)
 syscall_enable_warnings(syscall_core)
@@ -52,6 +53,7 @@ if(SYSCALL_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
         tests/test_trampoline.cpp
         tests/test_gadget_finder.cpp
         tests/test_hash.cpp
+        tests/test_status.cpp
     )
     target_include_directories(syscall_tests PRIVATE tests/support)
     target_link_libraries(syscall_tests PRIVATE syscall_core)
