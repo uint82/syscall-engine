@@ -25,6 +25,7 @@ add_library(syscall_core
     src/pe_image.cpp
     src/unwind.cpp
     src/unwind_layout.cpp
+    src/call_preceded_finder.cpp
     src/ssn_resolver.cpp
     src/trampoline.cpp
     src/gadget_finder.cpp
