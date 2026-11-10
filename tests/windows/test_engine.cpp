@@ -1,6 +1,7 @@
 #include "test_harness.hpp"
 
 #include "syscall/engine.hpp"
+#include "syscall/hash.hpp"
 
 #include <windows.h>
 
@@ -67,6 +68,46 @@ SC_TEST_CASE("a second commit is rejected") {
     SC_REQUIRE(engine.init(syscall::Mode::kDirect));
     SC_REQUIRE(engine.commit());
     SC_REQUIRE(!engine.commit());
+}
+
+SC_TEST_CASE("hashed resolution finds exported syscalls") {
+    syscall::Engine engine;
+    SC_REQUIRE(engine.init(syscall::Mode::kDirect));
+    SC_REQUIRE(engine.resolve(SC_HASH("NtClose")) != nullptr);
+    SC_REQUIRE(engine.resolve(SC_HASH("NtNotARealFunction")) == nullptr);
+}
+
+SC_TEST_CASE("a committed hashed direct stub executes") {
+    syscall::Engine engine;
+    SC_REQUIRE(engine.init(syscall::Mode::kDirect));
+    const auto query =
+        engine.get<NtQuerySystemTimeFn>(SC_HASH("NtQuerySystemTime"));
+    SC_REQUIRE(query != nullptr);
+    SC_REQUIRE(engine.commit());
+
+    LARGE_INTEGER time{};
+    SC_REQUIRE(query(&time) >= 0);
+    SC_REQUIRE(time.QuadPart != 0);
+}
+
+SC_TEST_CASE("a committed hashed indirect stub executes") {
+    syscall::Engine engine;
+    SC_REQUIRE(engine.init(syscall::Mode::kIndirect));
+    const auto query =
+        engine.get<NtQuerySystemTimeFn>(SC_HASH("NtQuerySystemTime"));
+    SC_REQUIRE(query != nullptr);
+    SC_REQUIRE(engine.commit());
+
+    LARGE_INTEGER time{};
+    SC_REQUIRE(query(&time) >= 0);
+    SC_REQUIRE(time.QuadPart != 0);
+}
+
+SC_TEST_CASE("hashed resolution is rejected after commit") {
+    syscall::Engine engine;
+    SC_REQUIRE(engine.init(syscall::Mode::kDirect));
+    SC_REQUIRE(engine.commit());
+    SC_REQUIRE(engine.resolve(SC_HASH("NtQuerySystemTime")) == nullptr);
 }
 
 SC_TEST_CASE("a second init is rejected") {

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -33,11 +34,17 @@ public:
     bool init(Mode mode = Mode::kDirect);
     ImageSource source() const;
     void* resolve(const char* name);
+    void* resolve(std::uint64_t hash);
     bool commit();
 
     template <typename Fn>
     Fn get(const char* name) {
         return reinterpret_cast<Fn>(resolve(name));
+    }
+
+    template <typename Fn>
+    Fn get(std::uint64_t hash) {
+        return reinterpret_cast<Fn>(resolve(hash));
     }
 
 private:
@@ -48,6 +55,8 @@ private:
     void* export_address(std::string_view name) const;
     bool prepare_gadget();
     bool allocate_trampolines();
+    std::optional<std::uint32_t> lookup_ssn(std::size_t index) const;
+    void* emit_stub(std::optional<std::uint32_t> ssn);
     bool write_stub(std::span<std::uint8_t> slot, std::uint32_t ssn);
 
     Mode mode_ = Mode::kDirect;

@@ -1,6 +1,7 @@
 #include "image_builder.hpp"
 #include "test_harness.hpp"
 
+#include "syscall/hash.hpp"
 #include "syscall/pe_image.hpp"
 #include "syscall/pe_types.hpp"
 
@@ -171,4 +172,28 @@ SC_TEST_CASE("find_export returns nothing for an unknown name") {
 SC_TEST_CASE("find_export returns nothing for an empty list") {
     const std::vector<syscall::pe::Export> exports;
     SC_REQUIRE(!syscall::pe::find_export(exports, "NtAlpha").has_value());
+}
+
+SC_TEST_CASE("find_export_hashed returns the index of a known name") {
+    const auto layout = two_export_builder().build();
+    const auto exports = syscall::pe::read_exports(layout.bytes.data(), layout.bytes.size());
+    SC_REQUIRE(exports.has_value());
+
+    const auto index = syscall::pe::find_export_hashed(*exports, SC_HASH("NtBeta"));
+    SC_REQUIRE(index.has_value());
+    SC_REQUIRE_EQ(static_cast<std::size_t>(1), *index);
+}
+
+SC_TEST_CASE("find_export_hashed returns nothing for an unknown name") {
+    const auto layout = two_export_builder().build();
+    const auto exports = syscall::pe::read_exports(layout.bytes.data(), layout.bytes.size());
+    SC_REQUIRE(exports.has_value());
+    SC_REQUIRE(!syscall::pe::find_export_hashed(*exports, SC_HASH("NtMissing")).has_value());
+}
+
+SC_TEST_CASE("find_export_hashed is case sensitive") {
+    const auto layout = two_export_builder().build();
+    const auto exports = syscall::pe::read_exports(layout.bytes.data(), layout.bytes.size());
+    SC_REQUIRE(exports.has_value());
+    SC_REQUIRE(!syscall::pe::find_export_hashed(*exports, SC_HASH("ntbeta")).has_value());
 }

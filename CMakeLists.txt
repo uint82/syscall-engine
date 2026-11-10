@@ -51,6 +51,7 @@ if(SYSCALL_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
         tests/test_ssn_resolver.cpp
         tests/test_trampoline.cpp
         tests/test_gadget_finder.cpp
+        tests/test_hash.cpp
     )
     target_include_directories(syscall_tests PRIVATE tests/support)
     target_link_libraries(syscall_tests PRIVATE syscall_core)

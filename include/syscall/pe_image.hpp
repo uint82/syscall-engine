@@ -25,5 +25,8 @@ std::optional<std::vector<Export>> read_exports(const std::uint8_t* image, std::
 std::optional<std::size_t> find_export(
     const std::vector<Export>& exports,
     std::string_view name);
+std::optional<std::size_t> find_export_hashed(
+    const std::vector<Export>& exports,
+    std::uint64_t hash);
 
 }
