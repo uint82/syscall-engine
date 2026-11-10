@@ -104,6 +104,47 @@ SC_TEST_CASE("resolve_ssn walks past consecutive hooked stubs") {
     SC_REQUIRE_EQ(std::uint32_t{32}, *c);
 }
 
+SC_TEST_CASE("resolve_ssn refuses neighbor estimates that disagree") {
+    support::ImageBuilder builder;
+    builder.add_clean_export("NtFirst", 10);
+    builder.add_hooked_export("NtOpaque");
+    builder.add_hooked_export("NtHooked");
+    builder.add_clean_export("NtLast", 12);
+    const auto layout = builder.build();
+    // NtFirst implies 12, NtLast implies 11, and one of them is lying.
+    SC_REQUIRE(!resolve_in(layout, "NtHooked").has_value());
+}
+
+SC_TEST_CASE("resolve_ssn uses the only clean neighbor below the target") {
+    support::ImageBuilder builder;
+    builder.add_clean_export("NtFirst", 20);
+    builder.add_hooked_export("NtMiddle");
+    builder.add_hooked_export("NtHooked");
+    const auto layout = builder.build();
+    const auto ssn = resolve_in(layout, "NtHooked");
+    SC_REQUIRE(ssn.has_value());
+    SC_REQUIRE_EQ(std::uint32_t{22}, *ssn);
+}
+
+SC_TEST_CASE("resolve_ssn refuses when every neighbor is unclean") {
+    support::ImageBuilder builder;
+    builder.add_hooked_export("NtFirst");
+    builder.add_hooked_export("NtHooked");
+    const auto layout = builder.build();
+    SC_REQUIRE(!resolve_in(layout, "NtHooked").has_value());
+}
+
+SC_TEST_CASE("resolve_ssn keeps a previous estimate when the next underflows") {
+    support::ImageBuilder builder;
+    builder.add_clean_export("NtFirst", 40);
+    builder.add_hooked_export("NtHooked");
+    builder.add_clean_export("NtZero", 0);
+    const auto layout = builder.build();
+    const auto ssn = resolve_in(layout, "NtHooked");
+    SC_REQUIRE(ssn.has_value());
+    SC_REQUIRE_EQ(std::uint32_t{41}, *ssn);
+}
+
 SC_TEST_CASE("resolve_ssn returns nothing for an unknown name") {
     support::ImageBuilder builder;
     builder.add_clean_export("NtKnown", 5);

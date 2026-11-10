@@ -75,21 +75,20 @@ std::optional<std::uint32_t> estimate_ssn(
     return neighbor->ssn - neighbor->distance;
 }
 
-std::optional<std::uint32_t> choose_nearest_estimate(
-    const std::optional<CleanNeighbor>& previous,
-    const std::optional<CleanNeighbor>& next) {
-    if (!previous.has_value()) {
-        return estimate_ssn(next, Direction::kNext);
+// A non-stub or forwarded export between the target and a clean neighbor
+// breaks the one-entry-one-ssn assumption. When the two sides disagree about
+// the recovered number, either answer would ring the wrong kernel door.
+std::optional<std::uint32_t> reconcile_estimates(
+    const std::optional<std::uint32_t>& from_previous,
+    const std::optional<std::uint32_t>& from_next) {
+    if (from_previous.has_value() && from_next.has_value() &&
+        *from_previous != *from_next) {
+        return std::nullopt;
     }
-    if (!next.has_value()) {
-        return estimate_ssn(previous, Direction::kPrevious);
+    if (from_previous.has_value()) {
+        return from_previous;
     }
-    if (previous->distance <= next->distance) {
-        const auto estimate = estimate_ssn(previous, Direction::kPrevious);
-        return estimate.has_value() ? estimate : estimate_ssn(next, Direction::kNext);
-    }
-    const auto estimate = estimate_ssn(next, Direction::kNext);
-    return estimate.has_value() ? estimate : estimate_ssn(previous, Direction::kPrevious);
+    return from_next;
 }
 
 }
@@ -126,7 +125,9 @@ std::optional<std::uint32_t> resolve_ssn(
     const auto previous =
         find_clean_neighbor(image, exports, index, Direction::kPrevious);
     const auto next = find_clean_neighbor(image, exports, index, Direction::kNext);
-    return choose_nearest_estimate(previous, next);
+    return reconcile_estimates(
+        estimate_ssn(previous, Direction::kPrevious),
+        estimate_ssn(next, Direction::kNext));
 }
 
 }
