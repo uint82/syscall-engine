@@ -15,6 +15,12 @@ jobs:
         run: cmake --build build --parallel
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Install
+        run: cmake --install build --prefix "${{ runner.temp }}/syscall-engine"
+      - name: Consume package
+        run: |
+          cmake -S tests/package -B package-build -DCMAKE_PREFIX_PATH="${{ runner.temp }}/syscall-engine"
+          cmake --build package-build
 
   windows:
     runs-on: windows-latest
@@ -26,3 +32,9 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Install
+        run: cmake --install build --prefix "${{ runner.temp }}/syscall-engine" --config Release
+      - name: Consume package
+        run: |
+          cmake -S tests/package -B package-build -DCMAKE_PREFIX_PATH="${{ runner.temp }}/syscall-engine"
+          cmake --build package-build --config Release
