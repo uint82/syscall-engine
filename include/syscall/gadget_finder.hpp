@@ -34,6 +34,10 @@ bool matches_bytes_at(
 std::optional<std::uint32_t> find_syscall_gadget(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections);
+std::optional<std::uint32_t> find_leaf_syscall_gadget(
+    std::span<const std::uint8_t> image,
+    const std::vector<pe::SectionHeader>& sections,
+    const std::vector<unwind::RuntimeFunction>& functions);
 std::optional<SpoofGadgets> find_spoof_gadgets(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections);

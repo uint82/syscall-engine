@@ -24,9 +24,11 @@ endfunction()
 add_library(syscall_core
     src/pe_image.cpp
     src/unwind.cpp
+    src/unwind_layout.cpp
     src/ssn_resolver.cpp
     src/trampoline.cpp
     src/gadget_finder.cpp
+    src/call_preceded_finder.cpp
     src/status.cpp
 )
 target_include_directories(syscall_core PUBLIC
@@ -62,6 +64,7 @@ if(SYSCALL_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
         tests/support/image_builder.cpp
         tests/test_pe_image.cpp
         tests/test_unwind.cpp
+        tests/test_unwind_layout.cpp
         tests/test_unwind_rbp.cpp
         tests/test_unwind_leaf.cpp
         tests/test_ssn_resolver.cpp
@@ -69,6 +72,7 @@ if(SYSCALL_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
         tests/test_unwind_trampoline.cpp
         tests/test_gadget_finder.cpp
         tests/test_unwind_gadget_finder.cpp
+        tests/test_call_preceded_finder.cpp
         tests/test_hash.cpp
         tests/test_status.cpp
     )
@@ -85,6 +89,7 @@ if(WIN32 AND SYSCALL_BUILD_TESTS)
         tests/windows/test_hook_poc.cpp
         tests/windows/test_gadget_validation.cpp
         tests/windows/test_unwind_poc.cpp
+        tests/windows/test_call_preceded_poc.cpp
         tests/windows/test_loader_poc.cpp
     )
     target_include_directories(syscall_windows_tests PRIVATE tests/support)
