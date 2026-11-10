@@ -84,6 +84,7 @@ if(WIN32 AND SYSCALL_BUILD_TESTS)
         tests/windows/test_engine.cpp
         tests/windows/test_hook_poc.cpp
         tests/windows/test_unwind_poc.cpp
+        tests/windows/test_loader_poc.cpp
     )
     target_include_directories(syscall_windows_tests PRIVATE tests/support)
     target_link_libraries(syscall_windows_tests PRIVATE syscall_windows ntdll)
