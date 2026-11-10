@@ -119,9 +119,9 @@ SC_TEST_CASE("resolve_ssn refuses neighbor estimates that disagree") {
 SC_TEST_CASE("resolve_ssn counts aliased exports as one neighbor step") {
     support::ImageBuilder builder;
     builder.add_clean_export("NtPrevious", 10);
-    builder.add_alias_export("ZwPrevious", 0);
+    builder.add_alias_export("ZwPrevious");
     builder.add_hooked_export("NtUserMode");
-    builder.add_alias_export("ZwUserMode", 2);
+    builder.add_alias_export("ZwUserMode");
     builder.add_clean_export("NtNext", 12);
     const auto layout = builder.build();
 

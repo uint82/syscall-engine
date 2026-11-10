@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <stdexcept>
 #include <utility>
 
 namespace support {
@@ -175,8 +176,11 @@ ImageBuilder& ImageBuilder::add_hooked_export(std::string name) {
     return *this;
 }
 
-ImageBuilder& ImageBuilder::add_alias_export(std::string name, std::size_t target) {
-    entries_.push_back({std::move(name), std::nullopt, target});
+ImageBuilder& ImageBuilder::add_alias_export(std::string name) {
+    if (entries_.empty()) {
+        throw std::out_of_range("alias export requires a previous export");
+    }
+    entries_.push_back({std::move(name), std::nullopt, entries_.size() - 1});
     return *this;
 }
 
