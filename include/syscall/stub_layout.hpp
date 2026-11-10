@@ -43,6 +43,9 @@ inline constexpr std::size_t kStoreRaxAtRspDisp8Length =
 inline constexpr std::size_t kLoadRaxAtRspDisp32Length =
     kLoadRaxAtRspDisp32Opcode.size() + sizeof(std::uint32_t);
 
+inline constexpr std::size_t kUnwindFrameCount = 4;
+inline constexpr std::size_t kUnwindGadgetCount = kUnwindFrameCount + 1;
+
 inline constexpr std::size_t kSpoofFrameSize = 0x100;
 inline constexpr std::size_t kSpoofFrameCount = 3;
 inline constexpr std::size_t kSpoofSlotCount = kSpoofFrameCount + 1;
