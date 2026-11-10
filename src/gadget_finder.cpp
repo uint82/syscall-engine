@@ -19,7 +19,7 @@ std::size_t section_span(
     }
     const auto declared =
         section.virtual_size != 0 ? section.virtual_size : section.raw_size;
-    // A section can promise more bytes than the image maps. Believe the map.
+    // The declared size can exceed the mapped image; clamp it to the mapped range.
     return std::min(static_cast<std::size_t>(declared), image.size() - start);
 }
 

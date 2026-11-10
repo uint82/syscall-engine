@@ -38,7 +38,7 @@ In scope:
 Out of scope:
 
 - Detection bypass limitations. The engine is an evasion component; "EDR detects it" is expected and documented in [`docs/security-posture.md`](docs/security-posture.md).
-- AV or EDR false positives on compiled loaders.
+- AV or EDR detections of compiled loaders.
 - Missing features or roadmap items.
 - Vulnerabilities in payloads or tooling built with the library.
 - Social engineering and third-party dependencies.

@@ -112,7 +112,7 @@ SC_TEST_CASE("resolve_ssn refuses neighbor estimates that disagree") {
     builder.add_hooked_export("NtHooked");
     builder.add_clean_export("NtLast", 12);
     const auto layout = builder.build();
-    // NtFirst implies 12, NtLast implies 11, and one of them is lying.
+    // The neighbors disagree: NtFirst implies 12 and NtLast implies 11.
     SC_REQUIRE(!resolve_in(layout, "NtHooked").has_value());
 }
 
