@@ -63,6 +63,7 @@ if(SYSCALL_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
         tests/test_unwind.cpp
         tests/test_ssn_resolver.cpp
         tests/test_trampoline.cpp
+        tests/test_unwind_trampoline.cpp
         tests/test_gadget_finder.cpp
         tests/test_unwind_gadget_finder.cpp
         tests/test_hash.cpp
