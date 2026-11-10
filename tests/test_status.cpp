@@ -8,7 +8,7 @@
 
 namespace {
 
-constexpr std::array<syscall::Status, 14> kStatuses{
+constexpr std::array<syscall::Status, 15> kStatuses{
     syscall::Status::kOk,
     syscall::Status::kInvalidArgument,
     syscall::Status::kAlreadyInitialized,
@@ -23,6 +23,7 @@ constexpr std::array<syscall::Status, 14> kStatuses{
     syscall::Status::kNoSyscallNumber,
     syscall::Status::kAlreadyCommitted,
     syscall::Status::kProtectionFailed,
+    syscall::Status::kGadgetInvalid,
 };
 
 }
