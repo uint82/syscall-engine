@@ -19,8 +19,8 @@ constexpr ACCESS_MASK kSectionMapRead = 0x0004;
 constexpr unsigned long kViewUnmap = 2;
 constexpr wchar_t kKnownDllsNtdll[] = L"\\KnownDlls\\ntdll.dll";
 
-// KnownDlls holds the section the loader itself maps, so it stays clean while
-// the per-process copy collects other people's hooks.
+// KnownDlls exposes the section the loader mapped. Hooks patch the process's
+// view, not the section, so this view stays clean.
 HANDLE open_known_dlls_section(const Api& api) {
     UNICODE_STRING name{};
     name.Buffer = const_cast<wchar_t*>(kKnownDllsNtdll);

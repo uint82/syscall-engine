@@ -4,25 +4,25 @@ Direct, indirect, and stack-spoofed syscall engine for Windows x64 with fresh nt
 
 ## Overview
 
-EDR products hook ntdll to inspect sensitive calls such as `NtAllocateVirtualMemory`. This library maps a clean copy of ntdll from `\KnownDlls`, resolves the system service number for any exported function there, and emits its own syscall stubs, so execution reaches the kernel without touching hooked code.
+EDR products hook ntdll to inspect sensitive calls such as `NtAllocateVirtualMemory`. This library maps the clean KnownDlls image of ntdll, resolves system service numbers for syscall exports, and emits its own syscall stubs, so execution reaches the kernel without touching hooked entry points.
 
-Direct mode executes `syscall` from the trampoline region. Indirect mode jumps into ntdll's own `syscall; ret` gadget, keeping both the transition and the return address inside ntdll. Spoofed indirect mode also rebuilds the return stack below the stub, so a kernel stack walk sees ntdll frames instead of the trampoline. Unwind-valid spoofed mode goes further: every fake frame points at a `ret` inside a leaf ntdll function whose `.pdata` entry declares no prolog, so a walker that validates unwind metadata sees a consistent chain.
+Direct mode executes `syscall` from the trampoline region. Indirect mode jumps into ntdll's own `syscall; ret` gadget, so the syscall instruction and the post-syscall `ret` execute inside ntdll; the caller's return address is still on the stack. Spoofed indirect mode rebuilds the return stack below the stub, so a stack walker sees ntdll return addresses instead of the caller's. Unwind-valid spoofed mode points every fake frame at a `ret` inside a leaf ntdll function whose `.pdata` entry declares no prolog, so a walker that validates unwind metadata sees a consistent chain.
 
 Built for red team tooling, EDR validation, and Windows internals research.
 
 ## Features
 
-- Fresh ntdll resolution: maps `\KnownDlls\ntdll.dll` read-only and reads SSNs from the clean image, so inline hooks never reach the resolver
-- Hashed resolution: `SC_HASH` evaluates FNV-1a at compile time, so `Nt*` names never appear as plaintext strings
-- Live fallback: if the KnownDlls mapping is unavailable, resolution falls back to the loaded module and Halo's Gate
+- Fresh ntdll resolution: maps `\KnownDlls\ntdll.dll` read-only and reads SSNs from the clean image, so inline hooks in the loaded ntdll do not affect resolution
+- Hashed resolution: `SC_HASH` is constexpr, so optimized builds fold the hash and drop the plaintext name
+- Live fallback: if the KnownDlls mapping or its export table is unavailable, resolution falls back to the loaded module and Halo's Gate
 - Direct syscall stubs
 - Indirect syscall stubs through a `syscall; ret` gadget found in an executable section of the live ntdll
-- Stack-spoofed indirect stubs: three ntdll `ret` frames and a `leave; ret` terminator restore the real return address, while stack arguments 5 through 12 are copied into the fake frame
+- Stack-spoofed indirect stubs: three ntdll `ret` frames and a `leave; ret` terminator rebuild the return stack; the terminator restores the caller's RBP and return address, and stack arguments 5 through 12 are copied into the fake frame
 - Unwind-valid spoofed stubs: a leaf `syscall; ret` gadget plus four leaf `ret` sites, each with a matching `.pdata` entry, so a metadata-validating walker sees consistent frames
-- CET aware: both spoofed modes fall back to plain indirect when a user shadow stack is enabled or the required gadgets are missing
-- Status codes: every engine call returns or records a `Status`, with `status_message` for diagnostics
-- Stub cache: resolving the same export twice returns the same trampoline
-- Halo's Gate fallback: recovers service numbers from neighboring stubs when a live stub is hooked, and cross-checks both sides before trusting a recovered number
+- CET aware: a user shadow stack forces a requested spoofed mode to plain indirect; missing gadgets fall back one mode at a time, down to indirect
+- Status codes: operations return a `Status` or record it for `last_error()`, and `status_message` maps codes to text
+- Stub cache: repeated resolves before commit return the same trampoline
+- Halo's Gate fallback: recovers service numbers from neighboring stubs when a live stub is hooked, and requires the two sides to agree when both are available
 - Portable core: PE parsing, SSN resolution, gadget discovery, and stub assembly have no Windows dependency and are unit tested natively
 - Explicit lifecycle: write stubs in read/write memory, then flip to read/execute with `commit`
 - CMake package: `find_package(syscall-engine)` exports `syscall::core` and `syscall::windows`
@@ -34,7 +34,7 @@ Built for red team tooling, EDR validation, and Windows internals research.
 | --- | --- |
 | `include/syscall/pe_types.hpp` | PE32+ structure layouts with compile-time size checks |
 | `include/syscall/pe_image.hpp` | Bounds-checked header, section, and export parsing |
-| `include/syscall/hash.hpp` | Compile-time FNV-1a hashing for export lookup |
+| `include/syscall/hash.hpp` | constexpr FNV-1a hashing for export lookup |
 | `include/syscall/status.hpp` | Engine status codes and diagnostic messages |
 | `include/syscall/ssn_resolver.hpp` | Direct stub reads and Halo's Gate neighbor recovery |
 | `include/syscall/gadget_finder.hpp` | `syscall; ret`, `ret`, and `leave; ret` gadget discovery in executable sections |
@@ -117,17 +117,17 @@ std::size_t size = 0x1000;
 nt_allocate(GetCurrentProcess(), &base, 0, &size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 ```
 
-Call resolved functions only after `commit`, because the trampoline region is read/write until then. The engine is not thread-safe; resolve stubs and commit from one thread. Use `Mode::kIndirectUnwindSpoofed` for unwind-valid frames; the engine falls back to plain spoofed or indirect when the required gadgets are missing.
+Resolve stubs before `commit` and call them only after, because the trampoline region is not executable until then. The engine is not thread-safe; resolve stubs and commit from one thread. Use `Mode::kIndirectUnwindSpoofed` for unwind-valid frames; the engine falls back to plain spoofed or indirect when the required gadgets are missing.
 
-`Engine::source()` reports whether the clean KnownDlls image or the live module supplied the SSNs. `Engine::mode()` reports the active mode after any fallback, and `Engine::last_error()` reports the status of the most recent call.
+`Engine::source()` reports whether the clean KnownDlls image or the live module supplied the SSNs. `Engine::mode()` reports the active mode after any fallback, and `Engine::last_error()` reports the most recent recorded status.
 
-The `const char*` overloads remain for tooling. The hashed overloads keep function names out of the binary's string table.
+The `const char*` overloads are available for tooling. In optimized builds, the hashed overloads keep function names out of the binary's string table.
 
 ## How it works
 
 1. Parse the loaded ntdll to find the section mapping primitives and, in indirect and both spoofed modes, the gadgets.
-2. Map `\KnownDlls\ntdll.dll` as a read-only image and parse its exports. KnownDlls keeps the section the loader maps, while hooks live in the per-process copy. Fall back to the live module if the mapping fails.
-3. Resolve the SSN for the requested function from the clean image, by name or by FNV-1a hash. A clean stub exposes it directly; on the live fallback, a hooked stub is recovered from the nearest clean neighbor by exported address, which is Halo's Gate. Nt/Zw aliases share one address and count as one step. When both neighbors are available, they must imply the same number, because a forwarded or non-stub export in between silently shifts the count.
+2. Map `\KnownDlls\ntdll.dll` as a read-only image and parse its exports. KnownDlls contains the section the loader mapped; hooks modify the process's view. Fall back to the live module if the mapping or export parsing fails.
+3. Resolve the SSN for the requested function from the clean image, by name or by FNV-1a hash. A clean stub exposes it directly. On the live fallback, a hooked stub is recovered from the nearest clean neighbor by exported address, which is Halo's Gate. Nt/Zw aliases share one address and count as one step. When both neighbors are available, their estimates must agree. An export between a neighbor and the target that is not a syscall stub adds a step without an SSN, so that side's estimate is off by the number of such exports.
 4. Emit a stub into the trampoline region. Both spoofed modes also build a fake return frame and copy the caller's stack arguments into it. Unwind-valid mode selects a leaf syscall gadget and four leaf `ret` sites so each frame has a matching `.pdata` entry.
 5. Flip the region to read/execute with `commit`.
 6. Call the stub like the original function.
@@ -197,7 +197,7 @@ The engine builds on public research. The main influences:
 - SSN resolution: [Hell's Gate](https://github.com/am0nsec/HellsGate) (2020), Halo's Gate (Sektor7, 2021), and [SysWhispers](https://github.com/jthuraisamy/SysWhispers) (2020).
 - Fresh ntdll mapping and hashed export lookup are common in this family of tools.
 
-The contribution here is an independent, dependency-free implementation with a leaf-frame selection strategy: a `syscall; ret` gadget covered by a leaf ntdll function, four distinct leaf `ret` sites, and a stub layout that keeps every fake frame consistent with the live `.pdata`. The `RtlVirtualUnwind` test and the benign loader PoC validate the chain end to end. The term "unwind-valid" is descriptive, not a claim of a new class of technique.
+The implementation is independent and has no external dependencies. The unwind-valid stub uses a leaf `syscall; ret` gadget, four distinct leaf `ret` sites, and a layout where every fake frame matches an entry in the live `.pdata`. The `RtlVirtualUnwind` test and the benign loader PoC cover the chain end to end.
 
 ## Testing
 
@@ -229,11 +229,11 @@ The Windows suite, run in CI, covers:
 - Resolve and commit lifecycle guards
 - Hook bypass: an inline hook on `NtAllocateVirtualMemory` blocks the normal call while the engine stub still allocates
 - Unwind-valid fake stack: `RtlVirtualUnwind` walks the exact four-frame chain and sentinel
-- Benign loader: allocate, write, protect, `NtCreateThreadEx`, wait, free, with a magic-value payload
+- Benign loader: allocate, write, protect, `NtCreateThreadEx`, wait, close, free, with a magic-value payload
 
 ## Security posture
 
-The engine is an evasion component, not a cloak of invisibility. It bypasses user-mode ntdll entry hooks and can build an unwind-valid fake stack, but kernel callbacks, ETW Threat Intelligence, memory scanning, behavioral analytics, and stack walkers with their own logic still see it. It is user-mode x64 only, requires existing code execution, and does not provide persistence, privilege escalation, C2, or payload encryption.
+The engine is an evasion component with a narrow scope. It bypasses user-mode ntdll entry hooks and can build an unwind-valid fake stack, but kernel callbacks, ETW Threat Intelligence, memory scanning, behavioral analytics, and stack walkers with their own logic still see it. It is user-mode x64 only, requires existing code execution, and does not provide persistence, privilege escalation, C2, or payload encryption.
 
 See [`docs/security-posture.md`](docs/security-posture.md) for the full scope, detection surface, defensive checks, and ATT&CK mapping. See [`SECURITY.md`](SECURITY.md) for reporting and safe harbor.
 

@@ -8,7 +8,9 @@ namespace syscall {
 inline constexpr std::uint64_t kFnvOffsetBasis = 0xCBF29CE484222325ULL;
 inline constexpr std::uint64_t kFnvPrime = 0x100000001B3ULL;
 
-// Older than most EDR vendors, and it still walks past their string scanners.
+// FNV-1a is small, constexpr, and dependency-free. It is not
+// cryptographic. Optimized builds fold the hash and drop the name; unoptimized
+// builds can keep the literal.
 constexpr std::uint64_t fnv1a(std::string_view text) {
     std::uint64_t hash = kFnvOffsetBasis;
     for (const char value : text) {

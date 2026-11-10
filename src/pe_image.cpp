@@ -167,8 +167,8 @@ std::optional<std::vector<SectionHeader>> read_sections(
         return std::nullopt;
     }
 
-    // The section table hides right after the optional header, whose size the
-    // file header is kind enough to declare.
+    // The section table follows the optional header. SizeOfOptionalHeader
+    // gives the header size.
     const std::size_t table = parsed->nt_offset + offsetof(NtHeaders64, optional) +
                               parsed->headers.file_header.optional_header_size;
     std::vector<SectionHeader> sections;

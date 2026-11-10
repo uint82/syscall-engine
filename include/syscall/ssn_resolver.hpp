@@ -13,6 +13,8 @@ namespace syscall {
 
 bool is_clean_stub(std::span<const std::uint8_t> code);
 
+// Exports must be sorted by RVA. pe::read_exports returns them in that order;
+// neighbor recovery depends on it.
 std::optional<std::uint32_t> resolve_ssn(
     std::span<const std::uint8_t> image,
     const std::vector<pe::Export>& exports,

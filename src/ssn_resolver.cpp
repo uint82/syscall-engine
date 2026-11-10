@@ -55,7 +55,7 @@ std::optional<CleanNeighbor> find_clean_neighbor(
             return std::nullopt;
         }
         const auto& candidate = exports[static_cast<std::size_t>(cursor)];
-        // Nt and Zw are one syscall wearing two name tags, so they share a step.
+        // Nt/Zw aliases share an RVA. Count distinct addresses, not export entries.
         if (candidate.rva == rva) {
             continue;
         }
@@ -89,8 +89,8 @@ std::optional<std::uint32_t> estimate_ssn(
     return neighbor->ssn - neighbor->distance;
 }
 
-// Both sides must agree: an interleaved non-syscall export can shift one
-// side's count, and either answer would ring the wrong kernel door.
+// A non-stub export between a neighbor and the target shifts that side's
+// count. Accept an estimate only when both sides agree.
 std::optional<std::uint32_t> reconcile_estimates(
     const std::optional<std::uint32_t>& from_previous,
     const std::optional<std::uint32_t>& from_next) {

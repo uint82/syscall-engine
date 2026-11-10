@@ -79,8 +79,8 @@ std::optional<std::size_t> extra_slots(std::uint8_t operation, std::uint8_t info
     case kPushMachframe:
         return info <= 1 ? std::optional<std::size_t>(0) : std::nullopt;
     default:
-        // Unknown operations hide operands in extra slots, so every slot after
-        // one of them is a guess.
+        // The operation info can add operand slots. For unknown operations the
+        // count is unknown, so the rest of the unwind codes cannot be located.
         return std::nullopt;
     }
 }
