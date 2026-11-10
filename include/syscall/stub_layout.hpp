@@ -44,26 +44,14 @@ inline constexpr std::size_t kLoadRaxAtRspDisp32Length =
     kLoadRaxAtRspDisp32Opcode.size() + sizeof(std::uint32_t);
 
 inline constexpr std::size_t kUnwindFrameCount = 4;
-inline constexpr std::size_t kUnwindGadgetCount = kUnwindFrameCount + 1;
-inline constexpr std::size_t kUnwindFrameSize = 0xB0;
-inline constexpr std::size_t kUnwindStackSlack = 0x70;
-inline constexpr std::size_t kUnwindRbpBias = kUnwindFrameSize - kUnwindStackSlack;
-inline constexpr std::size_t kUnwindRecordOffset = kUnwindStackSlack;
-inline constexpr std::size_t kUnwindFrameStep = 0x10;
+inline constexpr std::size_t kUnwindGadgetCount = kUnwindFrameCount;
+inline constexpr std::size_t kUnwindFrameSize =
+    kUnwindFrameCount * sizeof(std::uint64_t);
 inline constexpr std::size_t kUnwindArgCount = 8;
 inline constexpr std::size_t kUnwindArgOffset = 0x28;
 inline constexpr std::size_t kUnwindArgSourceOffset =
-    kUnwindFrameSize + sizeof(std::uint64_t) + kUnwindArgOffset;
+    kUnwindFrameSize + kUnwindArgOffset;
 
-inline constexpr std::array<std::uint8_t, 3> kSubRbpImm8Opcode{0x48, 0x83, 0xED};
-inline constexpr std::size_t kSubRbpImm8Length =
-    kSubRbpImm8Opcode.size() + sizeof(std::uint8_t);
-inline constexpr std::array<std::uint8_t, 3> kLeaRaxRbpDisp8Opcode{0x48, 0x8D, 0x45};
-inline constexpr std::size_t kLeaRaxRbpDisp8Length =
-    kLeaRaxRbpDisp8Opcode.size() + sizeof(std::uint8_t);
-inline constexpr std::array<std::uint8_t, 3> kStoreRaxAtRbpDisp8Opcode{0x48, 0x89, 0x45};
-inline constexpr std::size_t kStoreRaxAtRbpDisp8Length =
-    kStoreRaxAtRbpDisp8Opcode.size() + sizeof(std::uint8_t);
 inline constexpr std::array<std::uint8_t, 4> kLoadR10AtRspDisp32Opcode{0x4C, 0x8B, 0x94, 0x24};
 inline constexpr std::size_t kLoadR10AtRspDisp32Length =
     kLoadR10AtRspDisp32Opcode.size() + sizeof(std::uint32_t);
@@ -85,12 +73,15 @@ inline constexpr std::size_t kSpoofStubSize =
     kSpoofArgCount * (kLoadRaxAtRspDisp32Length + kStoreRaxAtRspDisp8Length) +
     kStubPrefix.size() + sizeof(std::uint32_t) + kJumpRipLength + sizeof(std::uint64_t);
 
+inline constexpr std::array<std::uint8_t, 3> kSubRspImm8Opcode{0x48, 0x83, 0xEC};
+inline constexpr std::size_t kSubRspImm8Length =
+    kSubRspImm8Opcode.size() + sizeof(std::uint8_t);
+
 inline constexpr std::size_t kUnwindStubSize =
-    kPushRbpLength + kMovRbpRspLength + kSubRspImm32Length + kSubRbpImm8Length +
-    kMovRaxImm64Length + kStoreRaxAtRspLength +
-    kUnwindFrameCount *
-        (kLeaRaxRbpDisp8Length + kStoreRaxAtRbpDisp8Length +
-         kMovRaxImm64Length + kStoreRaxAtRbpDisp8Length) +
+    kSubRspImm8Length +
+    kUnwindFrameCount * kMovRaxImm64Length +
+    kStoreRaxAtRspLength +
+    (kUnwindFrameCount - 1) * kStoreRaxAtRspDisp8Length +
     kUnwindArgCount * (kLoadR10AtRspDisp32Length + kStoreR10AtRspDisp8Length) +
     kStubPrefix.size() + sizeof(std::uint32_t) + kJumpRipLength + sizeof(std::uint64_t);
 
@@ -99,15 +90,10 @@ static_assert(kIndirectStubSize <= kTrampolineStride);
 static_assert(kSpoofStubSize <= kTrampolineStride);
 static_assert(kUnwindStubSize <= kTrampolineStride);
 static_assert(kSpoofArgOffset + kSpoofArgCount * sizeof(std::uint64_t) <= 0x80);
-static_assert(kUnwindRbpBias + kUnwindRecordOffset == kUnwindFrameSize);
-static_assert(
-    kUnwindArgOffset + kUnwindArgCount * sizeof(std::uint64_t) <=
-    kUnwindRecordOffset);
-static_assert(
-    kUnwindRecordOffset + kUnwindFrameCount * kUnwindFrameStep <=
-    kUnwindFrameSize);
-static_assert(
-    kUnwindArgSourceOffset ==
-    kUnwindFrameSize + sizeof(std::uint64_t) + kUnwindArgOffset);
+static_assert(kUnwindFrameSize <= 0x80);
+static_assert(kUnwindFrameCount * sizeof(std::uint64_t) == kUnwindFrameSize);
+static_assert(kUnwindArgOffset > kUnwindFrameSize);
+static_assert(kUnwindArgOffset + kUnwindArgCount * sizeof(std::uint64_t) <= 0x80);
+static_assert(kUnwindArgSourceOffset == kUnwindFrameSize + kUnwindArgOffset);
 
 }

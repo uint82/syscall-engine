@@ -6,9 +6,9 @@
 namespace syscall {
 namespace {
 
-constexpr std::uint8_t kLeaveOpcode = 0xC9;
-constexpr std::uint8_t kPopRbpOpcode = 0x5D;
-constexpr std::size_t kGadgetSize = 2;
+constexpr std::uint32_t kSyscallReturnOffset = 2;
+
+static_assert(kSyscallGadget[kSyscallReturnOffset] == 0xC3);
 
 std::size_t section_span(
     std::span<const std::uint8_t> image,
@@ -62,6 +62,17 @@ std::optional<std::uint32_t> find_pattern(
     return match;
 }
 
+bool is_leaf_at(
+    std::span<const std::uint8_t> image,
+    const std::vector<unwind::RuntimeFunction>& functions,
+    std::uint32_t rva) {
+    const auto index = unwind::find_runtime_function(functions, rva);
+    if (!index.has_value()) {
+        return false;
+    }
+    return unwind::is_leaf_function(image.data(), image.size(), functions[*index]);
+}
+
 std::optional<std::uint32_t> find_leaf_pattern(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections,
@@ -69,7 +80,7 @@ std::optional<std::uint32_t> find_leaf_pattern(
     const std::vector<unwind::RuntimeFunction>& functions) {
     std::optional<std::uint32_t> match;
     visit_pattern(image, sections, pattern, [&](std::uint32_t rva) {
-        if (unwind::find_runtime_function(functions, rva).has_value()) {
+        if (!is_leaf_at(image, functions, rva)) {
             return true;
         }
         match = rva;
@@ -92,39 +103,6 @@ std::size_t collect_frame_gadgets(
     return count;
 }
 
-struct GadgetPool {
-    std::optional<std::uint32_t> first_leave;
-    std::vector<std::uint32_t> gadgets;
-};
-
-void collect_unwind_gadgets(
-    std::span<const std::uint8_t> image,
-    const std::vector<unwind::RuntimeFunction>& functions,
-    GadgetPool& pool) {
-    for (const auto& function : functions) {
-        const auto prolog =
-            unwind::read_rbp_prolog_size(image.data(), image.size(), function);
-        if (!prolog.has_value()) {
-            continue;
-        }
-        const auto begin = static_cast<std::size_t>(function.begin_rva) + *prolog;
-        const auto end = static_cast<std::size_t>(function.end_rva);
-        for (std::size_t offset = begin; offset + kGadgetSize <= end; ++offset) {
-            if (image[offset + 1] != kReturnOpcode) {
-                continue;
-            }
-            if (image[offset] == kLeaveOpcode) {
-                if (!pool.first_leave.has_value()) {
-                    pool.first_leave = static_cast<std::uint32_t>(offset);
-                }
-                pool.gadgets.push_back(static_cast<std::uint32_t>(offset));
-            } else if (image[offset] == kPopRbpOpcode) {
-                pool.gadgets.push_back(static_cast<std::uint32_t>(offset));
-            }
-        }
-    }
-}
-
 bool is_used(
     const std::array<std::uint32_t, kUnwindGadgetCount>& frames,
     std::size_t count,
@@ -133,30 +111,29 @@ bool is_used(
            frames.begin() + count;
 }
 
-std::optional<UnwindSpoofGadgets> select_unwind_gadgets(
+std::size_t collect_unwind_frames(
+    std::span<const std::uint8_t> image,
+    const std::vector<pe::SectionHeader>& sections,
+    const std::vector<unwind::RuntimeFunction>& functions,
     std::uint32_t syscall_rva,
-    const GadgetPool& pool) {
-    if (!pool.first_leave.has_value()) {
-        return std::nullopt;
-    }
-    UnwindSpoofGadgets result{};
-    result.syscall = syscall_rva;
-    result.frames[0] = *pool.first_leave;
-    std::size_t count = 1;
-    for (const auto candidate : pool.gadgets) {
-        if (count == result.frames.size()) {
-            break;
+    UnwindSpoofGadgets& gadgets) {
+    std::size_t count = 0;
+    const std::array<std::uint8_t, 1> pattern{kReturnOpcode};
+    visit_pattern(image, sections, pattern, [&](std::uint32_t rva) {
+        if (rva == syscall_rva + kSyscallReturnOffset) {
+            return true;
         }
-        if (is_used(result.frames, count, candidate)) {
-            continue;
+        if (!is_leaf_at(image, functions, rva)) {
+            return true;
         }
-        result.frames[count] = candidate;
+        if (is_used(gadgets.frames, count, rva)) {
+            return true;
+        }
+        gadgets.frames[count] = rva;
         ++count;
-    }
-    if (count < result.frames.size()) {
-        return std::nullopt;
-    }
-    return result;
+        return count < gadgets.frames.size();
+    });
+    return count;
 }
 
 }
@@ -190,9 +167,13 @@ std::optional<UnwindSpoofGadgets> find_unwind_spoof_gadgets(
     if (!syscall.has_value()) {
         return std::nullopt;
     }
-    GadgetPool pool;
-    collect_unwind_gadgets(image, functions, pool);
-    return select_unwind_gadgets(*syscall, pool);
+    UnwindSpoofGadgets result{};
+    result.syscall = *syscall;
+    if (collect_unwind_frames(image, sections, functions, *syscall, result) <
+        result.frames.size()) {
+        return std::nullopt;
+    }
+    return result;
 }
 
 }

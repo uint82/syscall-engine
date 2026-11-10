@@ -62,6 +62,8 @@ if(SYSCALL_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
         tests/support/image_builder.cpp
         tests/test_pe_image.cpp
         tests/test_unwind.cpp
+        tests/test_unwind_rbp.cpp
+        tests/test_unwind_leaf.cpp
         tests/test_ssn_resolver.cpp
         tests/test_trampoline.cpp
         tests/test_unwind_trampoline.cpp

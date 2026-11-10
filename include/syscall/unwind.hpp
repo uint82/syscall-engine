@@ -25,5 +25,9 @@ std::optional<std::uint8_t> read_rbp_prolog_size(
     const std::uint8_t* image,
     std::size_t size,
     const RuntimeFunction& function);
+bool is_leaf_function(
+    const std::uint8_t* image,
+    std::size_t size,
+    const RuntimeFunction& function);
 
 }

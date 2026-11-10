@@ -5,6 +5,8 @@
 
 #include <windows.h>
 
+#include <cstddef>
+
 namespace {
 
 using NtQuerySystemTimeFn = LONG(NTAPI*)(LARGE_INTEGER*);

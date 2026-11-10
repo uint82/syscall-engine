@@ -18,8 +18,7 @@ constexpr std::array<std::uint64_t, syscall::kUnwindGadgetCount> kSampleFrames{
     0x00007FF8AABBCC01,
     0x00007FF8AABBCC02,
     0x00007FF8AABBCC03,
-    0x00007FF8AABBCC04,
-    0x00007FF8AABBCC05};
+    0x00007FF8AABBCC04};
 
 syscall::UnwindSpoofAddresses sample_addresses() {
     syscall::UnwindSpoofAddresses addresses{};
@@ -47,47 +46,40 @@ bool contains(
            stub.end();
 }
 
-std::size_t prologue_size() {
-    return syscall::kPushRbpLength + syscall::kMovRbpRspLength +
-           syscall::kSubRspImm32Length + syscall::kSubRbpImm8Length;
+std::size_t slot_size(std::size_t index) {
+    return syscall::kMovRaxImm64Length +
+           (index == 0 ? syscall::kStoreRaxAtRspLength
+                       : syscall::kStoreRaxAtRspDisp8Length);
 }
 
-std::size_t slot_size() {
-    return syscall::kMovRaxImm64Length + syscall::kStoreRaxAtRspLength;
+std::size_t slots_size() {
+    std::size_t size = 0;
+    for (std::size_t index = 0; index < syscall::kUnwindFrameCount; ++index) {
+        size += slot_size(index);
+    }
+    return size;
 }
 
-std::size_t record_size() {
-    return syscall::kLeaRaxRbpDisp8Length + syscall::kStoreRaxAtRbpDisp8Length +
-           syscall::kMovRaxImm64Length + syscall::kStoreRaxAtRbpDisp8Length;
-}
-
-std::vector<std::uint8_t> expected_record(
+std::vector<std::uint8_t> expected_slot(
     std::size_t index,
     std::uint64_t gadget) {
-    const auto record_offset =
-        static_cast<std::uint8_t>(index * syscall::kUnwindFrameStep);
-    const auto saved_offset =
-        static_cast<std::uint8_t>(record_offset + syscall::kUnwindFrameStep);
-    std::vector<std::uint8_t> record;
-    record.insert(
-        record.end(), syscall::kLeaRaxRbpDisp8Opcode.begin(),
-        syscall::kLeaRaxRbpDisp8Opcode.end());
-    record.push_back(saved_offset);
-    record.insert(
-        record.end(), syscall::kStoreRaxAtRbpDisp8Opcode.begin(),
-        syscall::kStoreRaxAtRbpDisp8Opcode.end());
-    record.push_back(record_offset);
-    record.insert(
-        record.end(), syscall::kMovRaxImm64Opcode.begin(),
+    std::vector<std::uint8_t> slot;
+    slot.insert(
+        slot.end(), syscall::kMovRaxImm64Opcode.begin(),
         syscall::kMovRaxImm64Opcode.end());
     const auto gadget_bytes = encode_u64(gadget);
-    record.insert(record.end(), gadget_bytes.begin(), gadget_bytes.end());
-    record.insert(
-        record.end(), syscall::kStoreRaxAtRbpDisp8Opcode.begin(),
-        syscall::kStoreRaxAtRbpDisp8Opcode.end());
-    record.push_back(
-        static_cast<std::uint8_t>(record_offset + sizeof(std::uint64_t)));
-    return record;
+    slot.insert(slot.end(), gadget_bytes.begin(), gadget_bytes.end());
+    if (index == 0) {
+        slot.insert(
+            slot.end(), syscall::kStoreRaxAtRspOpcode.begin(),
+            syscall::kStoreRaxAtRspOpcode.end());
+    } else {
+        slot.insert(
+            slot.end(), syscall::kStoreRaxAtRspDisp8Opcode.begin(),
+            syscall::kStoreRaxAtRspDisp8Opcode.end());
+        slot.push_back(static_cast<std::uint8_t>(index * sizeof(std::uint64_t)));
+    }
+    return slot;
 }
 
 std::vector<std::uint8_t> expected_arg_block() {
@@ -116,36 +108,26 @@ SC_TEST_CASE("write_unwind_spoofed_stub emits the expected prologue") {
     std::array<std::uint8_t, syscall::kUnwindStubSize> stub{};
     SC_REQUIRE(syscall::write_unwind_spoofed_stub(
         stub, kSampleSsn, kSampleSyscallGadget, sample_addresses()));
-    const std::array<std::uint8_t, 15> prologue{
-        0x55, 0x48, 0x89, 0xE5, 0x48, 0x81, 0xEC, 0xB0,
-        0x00, 0x00, 0x00, 0x48, 0x83, 0xED, 0x40};
+    const std::array<std::uint8_t, 4> prologue{0x48, 0x83, 0xEC, 0x20};
     SC_REQUIRE(std::equal(prologue.begin(), prologue.end(), stub.begin()));
 }
 
-SC_TEST_CASE("write_unwind_spoofed_stub stores the leave gadget below the records") {
+SC_TEST_CASE("write_unwind_spoofed_stub stores the first frame below the return address") {
     std::array<std::uint8_t, syscall::kUnwindStubSize> stub{};
     SC_REQUIRE(syscall::write_unwind_spoofed_stub(
         stub, kSampleSsn, kSampleSyscallGadget, sample_addresses()));
-    std::vector<std::uint8_t> expected;
-    expected.insert(
-        expected.end(), syscall::kMovRaxImm64Opcode.begin(),
-        syscall::kMovRaxImm64Opcode.end());
-    const auto gadget = encode_u64(kSampleFrames[0]);
-    expected.insert(expected.end(), gadget.begin(), gadget.end());
-    expected.insert(
-        expected.end(), syscall::kStoreRaxAtRspOpcode.begin(),
-        syscall::kStoreRaxAtRspOpcode.end());
+    const auto expected = expected_slot(0, kSampleFrames[0]);
     SC_REQUIRE(std::equal(
-        expected.begin(), expected.end(), stub.begin() + prologue_size()));
+        expected.begin(), expected.end(), stub.begin() + syscall::kSubRspImm8Length));
 }
 
-SC_TEST_CASE("write_unwind_spoofed_stub emits the expected record chain") {
+SC_TEST_CASE("write_unwind_spoofed_stub emits the expected frame chain") {
     std::array<std::uint8_t, syscall::kUnwindStubSize> stub{};
     SC_REQUIRE(syscall::write_unwind_spoofed_stub(
         stub, kSampleSsn, kSampleSyscallGadget, sample_addresses()));
-    std::size_t offset = prologue_size() + slot_size();
+    std::size_t offset = syscall::kSubRspImm8Length;
     for (std::size_t index = 0; index < syscall::kUnwindFrameCount; ++index) {
-        const auto expected = expected_record(index, kSampleFrames[index + 1]);
+        const auto expected = expected_slot(index, kSampleFrames[index]);
         SC_REQUIRE(std::equal(expected.begin(), expected.end(), stub.begin() + offset));
         offset += expected.size();
     }
@@ -155,8 +137,7 @@ SC_TEST_CASE("write_unwind_spoofed_stub copies the caller stack arguments") {
     std::array<std::uint8_t, syscall::kUnwindStubSize> stub{};
     SC_REQUIRE(syscall::write_unwind_spoofed_stub(
         stub, kSampleSsn, kSampleSyscallGadget, sample_addresses()));
-    const auto offset = prologue_size() + slot_size() +
-                        syscall::kUnwindFrameCount * record_size();
+    const auto offset = syscall::kSubRspImm8Length + slots_size();
     const auto expected = expected_arg_block();
     SC_REQUIRE(std::equal(expected.begin(), expected.end(), stub.begin() + offset));
 }

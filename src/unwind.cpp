@@ -274,4 +274,21 @@ std::optional<std::uint8_t> read_rbp_prolog_size(
     return header->prolog_size;
 }
 
+bool is_leaf_function(
+    const std::uint8_t* image,
+    std::size_t size,
+    const RuntimeFunction& function) {
+    const auto header =
+        pe::read_struct<UnwindHeader>(image, size, function.unwind_info_rva);
+    if (!header.has_value()) {
+        return false;
+    }
+    if ((header->version_flags & kVersionMask) != kUnwindVersion ||
+        (header->version_flags & kChainedFlag) != 0) {
+        return false;
+    }
+    return header->prolog_size == 0 && header->code_count == 0 &&
+           header->frame_info == 0;
+}
+
 }
