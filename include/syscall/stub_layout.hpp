@@ -43,6 +43,22 @@ inline constexpr std::size_t kStoreRaxAtRspDisp8Length =
 inline constexpr std::size_t kLoadRaxAtRspDisp32Length =
     kLoadRaxAtRspDisp32Opcode.size() + sizeof(std::uint32_t);
 
+inline constexpr std::size_t kUnwindFrameCount = 4;
+inline constexpr std::size_t kUnwindGadgetCount = kUnwindFrameCount;
+inline constexpr std::size_t kUnwindFrameSize =
+    kUnwindFrameCount * sizeof(std::uint64_t);
+inline constexpr std::size_t kUnwindArgCount = 8;
+inline constexpr std::size_t kUnwindArgOffset = 0x28;
+inline constexpr std::size_t kUnwindArgSourceOffset =
+    kUnwindFrameSize + kUnwindArgOffset;
+
+inline constexpr std::array<std::uint8_t, 4> kLoadR10AtRspDisp32Opcode{0x4C, 0x8B, 0x94, 0x24};
+inline constexpr std::size_t kLoadR10AtRspDisp32Length =
+    kLoadR10AtRspDisp32Opcode.size() + sizeof(std::uint32_t);
+inline constexpr std::array<std::uint8_t, 4> kStoreR10AtRspDisp8Opcode{0x4C, 0x89, 0x54, 0x24};
+inline constexpr std::size_t kStoreR10AtRspDisp8Length =
+    kStoreR10AtRspDisp8Opcode.size() + sizeof(std::uint8_t);
+
 inline constexpr std::size_t kSpoofFrameSize = 0x100;
 inline constexpr std::size_t kSpoofFrameCount = 3;
 inline constexpr std::size_t kSpoofSlotCount = kSpoofFrameCount + 1;
@@ -57,9 +73,27 @@ inline constexpr std::size_t kSpoofStubSize =
     kSpoofArgCount * (kLoadRaxAtRspDisp32Length + kStoreRaxAtRspDisp8Length) +
     kStubPrefix.size() + sizeof(std::uint32_t) + kJumpRipLength + sizeof(std::uint64_t);
 
+inline constexpr std::array<std::uint8_t, 3> kSubRspImm8Opcode{0x48, 0x83, 0xEC};
+inline constexpr std::size_t kSubRspImm8Length =
+    kSubRspImm8Opcode.size() + sizeof(std::uint8_t);
+
+inline constexpr std::size_t kUnwindStubSize =
+    kSubRspImm8Length +
+    kUnwindFrameCount * kMovRaxImm64Length +
+    kStoreRaxAtRspLength +
+    (kUnwindFrameCount - 1) * kStoreRaxAtRspDisp8Length +
+    kUnwindArgCount * (kLoadR10AtRspDisp32Length + kStoreR10AtRspDisp8Length) +
+    kStubPrefix.size() + sizeof(std::uint32_t) + kJumpRipLength + sizeof(std::uint64_t);
+
 static_assert(kDirectStubSize <= kTrampolineStride);
 static_assert(kIndirectStubSize <= kTrampolineStride);
 static_assert(kSpoofStubSize <= kTrampolineStride);
+static_assert(kUnwindStubSize <= kTrampolineStride);
 static_assert(kSpoofArgOffset + kSpoofArgCount * sizeof(std::uint64_t) <= 0x80);
+static_assert(kUnwindFrameSize <= 0x80);
+static_assert(kUnwindFrameCount * sizeof(std::uint64_t) == kUnwindFrameSize);
+static_assert(kUnwindArgOffset > kUnwindFrameSize);
+static_assert(kUnwindArgOffset + kUnwindArgCount * sizeof(std::uint64_t) <= 0x80);
+static_assert(kUnwindArgSourceOffset == kUnwindFrameSize + kUnwindArgOffset);
 
 }

@@ -16,6 +16,10 @@ struct Export {
 };
 
 std::optional<std::size_t> read_nt_offset(const std::uint8_t* image, std::size_t size);
+std::optional<DataDirectory> read_data_directory(
+    const std::uint8_t* image,
+    std::size_t size,
+    std::size_t index);
 std::optional<std::uint32_t> read_export_directory_rva(const std::uint8_t* image, std::size_t size);
 std::optional<std::size_t> read_image_size(const std::uint8_t* image, std::size_t size);
 std::optional<std::vector<SectionHeader>> read_sections(

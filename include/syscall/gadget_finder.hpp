@@ -8,6 +8,7 @@
 
 #include "syscall/pe_types.hpp"
 #include "syscall/stub_layout.hpp"
+#include "syscall/unwind.hpp"
 
 namespace syscall {
 
@@ -19,11 +20,20 @@ struct SpoofGadgets {
     std::uint32_t terminator = 0;
 };
 
+struct UnwindSpoofGadgets {
+    std::uint32_t syscall = 0;
+    std::array<std::uint32_t, kUnwindGadgetCount> frames{};
+};
+
 std::optional<std::uint32_t> find_syscall_gadget(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections);
 std::optional<SpoofGadgets> find_spoof_gadgets(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections);
+std::optional<UnwindSpoofGadgets> find_unwind_spoof_gadgets(
+    std::span<const std::uint8_t> image,
+    const std::vector<pe::SectionHeader>& sections,
+    const std::vector<unwind::RuntimeFunction>& functions);
 
 }

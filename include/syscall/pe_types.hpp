@@ -11,6 +11,7 @@ inline constexpr std::uint32_t kNtSignature = 0x00004550;
 inline constexpr std::uint16_t kPe32PlusMagic = 0x020B;
 inline constexpr std::uint16_t kAmd64Machine = 0x8664;
 inline constexpr std::size_t kExportDirectoryIndex = 0;
+inline constexpr std::size_t kExceptionDirectoryIndex = 3;
 inline constexpr std::size_t kDataDirectoryCount = 16;
 inline constexpr std::uint32_t kSectionExecute = 0x20000000;
 

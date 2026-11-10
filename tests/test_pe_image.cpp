@@ -74,6 +74,33 @@ SC_TEST_CASE("read_export_directory_rva rejects a missing directory entry") {
              .has_value());
 }
 
+SC_TEST_CASE("read_data_directory returns the export directory") {
+    const auto layout = two_export_builder().build();
+    const auto directory = syscall::pe::read_data_directory(
+        layout.bytes.data(), layout.bytes.size(), syscall::pe::kExportDirectoryIndex);
+    SC_REQUIRE(directory.has_value());
+    SC_REQUIRE_EQ(layout.export_rva, directory->rva);
+    SC_REQUIRE_EQ(static_cast<std::uint32_t>(sizeof(syscall::pe::ExportDirectory)),
+                  directory->size);
+}
+
+SC_TEST_CASE("read_data_directory returns an empty exception entry") {
+    const auto layout = two_export_builder().build();
+    const auto directory = syscall::pe::read_data_directory(
+        layout.bytes.data(), layout.bytes.size(), syscall::pe::kExceptionDirectoryIndex);
+    SC_REQUIRE(directory.has_value());
+    SC_REQUIRE_EQ(static_cast<std::uint32_t>(0), directory->rva);
+    SC_REQUIRE_EQ(static_cast<std::uint32_t>(0), directory->size);
+}
+
+SC_TEST_CASE("read_data_directory rejects an index beyond the directory count") {
+    const auto layout = two_export_builder().build();
+    SC_REQUIRE(!syscall::pe::read_data_directory(
+                    layout.bytes.data(), layout.bytes.size(),
+                    syscall::pe::kDataDirectoryCount)
+                    .has_value());
+}
+
 SC_TEST_CASE("read_image_size returns the configured image size") {
     support::ImageBuilder builder;
     builder.add_clean_export("NtAlpha", 10).with_image_size(0x5000);

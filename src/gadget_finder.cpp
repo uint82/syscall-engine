@@ -1,10 +1,14 @@
 #include "syscall/gadget_finder.hpp"
 
 #include <algorithm>
-#include <iterator>
+#include <array>
 
 namespace syscall {
 namespace {
+
+constexpr std::uint32_t kSyscallReturnOffset = 2;
+
+static_assert(kSyscallGadget[kSyscallReturnOffset] == 0xC3);
 
 std::size_t section_span(
     std::span<const std::uint8_t> image,
@@ -19,10 +23,12 @@ std::size_t section_span(
     return std::min(static_cast<std::size_t>(declared), image.size() - start);
 }
 
-std::optional<std::uint32_t> find_pattern(
+template <typename Visitor>
+void visit_pattern(
     std::span<const std::uint8_t> image,
     const std::vector<pe::SectionHeader>& sections,
-    std::span<const std::uint8_t> pattern) {
+    std::span<const std::uint8_t> pattern,
+    Visitor visit) {
     for (const auto& section : sections) {
         if ((section.characteristics & pe::kSectionExecute) == 0) {
             continue;
@@ -32,15 +38,55 @@ std::optional<std::uint32_t> find_pattern(
             continue;
         }
         const auto code = image.subspan(section.virtual_address, length);
-        const auto match = std::search(
-            code.begin(), code.end(), pattern.begin(), pattern.end());
-        if (match == code.end()) {
-            continue;
+        for (std::size_t offset = 0; offset + pattern.size() <= code.size(); ++offset) {
+            if (!std::equal(pattern.begin(), pattern.end(), code.begin() + offset)) {
+                continue;
+            }
+            const auto rva = section.virtual_address + static_cast<std::uint32_t>(offset);
+            if (!visit(rva)) {
+                return;
+            }
         }
-        return section.virtual_address +
-               static_cast<std::uint32_t>(std::distance(code.begin(), match));
     }
-    return std::nullopt;
+}
+
+std::optional<std::uint32_t> find_pattern(
+    std::span<const std::uint8_t> image,
+    const std::vector<pe::SectionHeader>& sections,
+    std::span<const std::uint8_t> pattern) {
+    std::optional<std::uint32_t> match;
+    visit_pattern(image, sections, pattern, [&match](std::uint32_t rva) {
+        match = rva;
+        return false;
+    });
+    return match;
+}
+
+bool is_leaf_at(
+    std::span<const std::uint8_t> image,
+    const std::vector<unwind::RuntimeFunction>& functions,
+    std::uint32_t rva) {
+    const auto index = unwind::find_runtime_function(functions, rva);
+    if (!index.has_value()) {
+        return false;
+    }
+    return unwind::is_leaf_function(image.data(), image.size(), functions[*index]);
+}
+
+std::optional<std::uint32_t> find_leaf_pattern(
+    std::span<const std::uint8_t> image,
+    const std::vector<pe::SectionHeader>& sections,
+    std::span<const std::uint8_t> pattern,
+    const std::vector<unwind::RuntimeFunction>& functions) {
+    std::optional<std::uint32_t> match;
+    visit_pattern(image, sections, pattern, [&](std::uint32_t rva) {
+        if (!is_leaf_at(image, functions, rva)) {
+            return true;
+        }
+        match = rva;
+        return false;
+    });
+    return match;
 }
 
 std::size_t collect_frame_gadgets(
@@ -48,27 +94,45 @@ std::size_t collect_frame_gadgets(
     const std::vector<pe::SectionHeader>& sections,
     SpoofGadgets& gadgets) {
     std::size_t count = 0;
-    for (const auto& section : sections) {
-        if ((section.characteristics & pe::kSectionExecute) == 0) {
-            continue;
+    const std::array<std::uint8_t, 1> pattern{kReturnOpcode};
+    visit_pattern(image, sections, pattern, [&](std::uint32_t rva) {
+        gadgets.frames[count] = rva;
+        ++count;
+        return count < gadgets.frames.size();
+    });
+    return count;
+}
+
+bool is_used(
+    const std::array<std::uint32_t, kUnwindGadgetCount>& frames,
+    std::size_t count,
+    std::uint32_t candidate) {
+    return std::find(frames.begin(), frames.begin() + count, candidate) !=
+           frames.begin() + count;
+}
+
+std::size_t collect_unwind_frames(
+    std::span<const std::uint8_t> image,
+    const std::vector<pe::SectionHeader>& sections,
+    const std::vector<unwind::RuntimeFunction>& functions,
+    std::uint32_t syscall_rva,
+    UnwindSpoofGadgets& gadgets) {
+    std::size_t count = 0;
+    const std::array<std::uint8_t, 1> pattern{kReturnOpcode};
+    visit_pattern(image, sections, pattern, [&](std::uint32_t rva) {
+        if (rva == syscall_rva + kSyscallReturnOffset) {
+            return true;
         }
-        const auto length = section_span(image, section);
-        if (length == 0) {
-            continue;
+        if (!is_leaf_at(image, functions, rva)) {
+            return true;
         }
-        const auto code = image.subspan(section.virtual_address, length);
-        for (std::size_t offset = 0; offset < code.size(); ++offset) {
-            if (count == gadgets.frames.size()) {
-                return count;
-            }
-            if (code[offset] != kReturnOpcode) {
-                continue;
-            }
-            gadgets.frames[count] =
-                section.virtual_address + static_cast<std::uint32_t>(offset);
-            ++count;
+        if (is_used(gadgets.frames, count, rva)) {
+            return true;
         }
-    }
+        gadgets.frames[count] = rva;
+        ++count;
+        return count < gadgets.frames.size();
+    });
     return count;
 }
 
@@ -93,6 +157,23 @@ std::optional<SpoofGadgets> find_spoof_gadgets(
     }
     gadgets.terminator = *terminator;
     return gadgets;
+}
+
+std::optional<UnwindSpoofGadgets> find_unwind_spoof_gadgets(
+    std::span<const std::uint8_t> image,
+    const std::vector<pe::SectionHeader>& sections,
+    const std::vector<unwind::RuntimeFunction>& functions) {
+    const auto syscall = find_leaf_pattern(image, sections, kSyscallGadget, functions);
+    if (!syscall.has_value()) {
+        return std::nullopt;
+    }
+    UnwindSpoofGadgets result{};
+    result.syscall = *syscall;
+    if (collect_unwind_frames(image, sections, functions, *syscall, result) <
+        result.frames.size()) {
+        return std::nullopt;
+    }
+    return result;
 }
 
 }
