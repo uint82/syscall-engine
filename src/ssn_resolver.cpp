@@ -3,6 +3,8 @@
 #include "syscall/stub_layout.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 
 namespace syscall {
@@ -23,27 +25,71 @@ std::optional<std::uint32_t> read_stub_ssn(
     return ssn;
 }
 
-std::optional<std::uint32_t> resolve_from_neighbor(
+enum class Direction {
+    kPrevious,
+    kNext,
+};
+
+struct CleanNeighbor {
+    std::uint32_t ssn;
+    std::uint32_t distance;
+};
+
+constexpr std::ptrdiff_t kPreviousStep = -1;
+constexpr std::ptrdiff_t kNextStep = 1;
+
+std::optional<CleanNeighbor> find_clean_neighbor(
     std::span<const std::uint8_t> image,
     const std::vector<pe::Export>& exports,
     std::size_t index,
-    std::size_t step) {
-    if (index >= step) {
-        const auto previous = read_stub_ssn(image, exports[index - step].rva);
-        if (previous.has_value()) {
-            return *previous + static_cast<std::uint32_t>(step);
+    Direction direction) {
+    std::ptrdiff_t cursor = static_cast<std::ptrdiff_t>(index);
+    const std::ptrdiff_t step =
+        direction == Direction::kPrevious ? kPreviousStep : kNextStep;
+    for (std::size_t distance = 1; distance < exports.size(); ++distance) {
+        cursor += step;
+        if (cursor < 0 || static_cast<std::size_t>(cursor) >= exports.size()) {
+            return std::nullopt;
         }
-    }
-    if (index + step < exports.size()) {
-        const auto next = read_stub_ssn(image, exports[index + step].rva);
-        if (next.has_value()) {
-            if (*next < step) {
-                return std::nullopt;
-            }
-            return *next - static_cast<std::uint32_t>(step);
+        const auto ssn =
+            read_stub_ssn(image, exports[static_cast<std::size_t>(cursor)].rva);
+        if (ssn.has_value()) {
+            return CleanNeighbor{*ssn, static_cast<std::uint32_t>(distance)};
         }
     }
     return std::nullopt;
+}
+
+std::optional<std::uint32_t> estimate_ssn(
+    const std::optional<CleanNeighbor>& neighbor,
+    Direction direction) {
+    if (!neighbor.has_value()) {
+        return std::nullopt;
+    }
+    if (direction == Direction::kPrevious) {
+        return neighbor->ssn + neighbor->distance;
+    }
+    if (neighbor->ssn < neighbor->distance) {
+        return std::nullopt;
+    }
+    return neighbor->ssn - neighbor->distance;
+}
+
+std::optional<std::uint32_t> choose_nearest_estimate(
+    const std::optional<CleanNeighbor>& previous,
+    const std::optional<CleanNeighbor>& next) {
+    if (!previous.has_value()) {
+        return estimate_ssn(next, Direction::kNext);
+    }
+    if (!next.has_value()) {
+        return estimate_ssn(previous, Direction::kPrevious);
+    }
+    if (previous->distance <= next->distance) {
+        const auto estimate = estimate_ssn(previous, Direction::kPrevious);
+        return estimate.has_value() ? estimate : estimate_ssn(next, Direction::kNext);
+    }
+    const auto estimate = estimate_ssn(next, Direction::kNext);
+    return estimate.has_value() ? estimate : estimate_ssn(previous, Direction::kPrevious);
 }
 
 }
@@ -77,13 +123,10 @@ std::optional<std::uint32_t> resolve_ssn(
         return direct;
     }
 
-    for (std::size_t step = 1; step < exports.size(); ++step) {
-        const auto ssn = resolve_from_neighbor(image, exports, index, step);
-        if (ssn.has_value()) {
-            return ssn;
-        }
-    }
-    return std::nullopt;
+    const auto previous =
+        find_clean_neighbor(image, exports, index, Direction::kPrevious);
+    const auto next = find_clean_neighbor(image, exports, index, Direction::kNext);
+    return choose_nearest_estimate(previous, next);
 }
 
 }
