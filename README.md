@@ -216,6 +216,9 @@ The Windows suite, run in CI, covers:
 - Direct, indirect, spoofed, and unwind-valid stub execution through `NtQuerySystemTime`
 - Stack argument forwarding through spoofed and unwind-valid `NtQueryVirtualMemory` calls
 - Resolve and commit lifecycle guards
+- Hook bypass: an inline hook on `NtAllocateVirtualMemory` blocks the normal call while the engine stub still allocates
+- Unwind-valid fake stack: `RtlVirtualUnwind` walks the exact four-frame chain and sentinel
+- Benign loader: allocate, write, protect, `NtCreateThreadEx`, wait, free, with a magic-value payload
 
 ## Detection notes
 
