@@ -1,8 +1,8 @@
 #include "test_harness.hpp"
+#include "windows_image.hpp"
 
 #include "syscall/engine.hpp"
 #include "syscall/gadget_finder.hpp"
-#include "syscall/pe_image.hpp"
 
 #include <windows.h>
 
@@ -83,15 +83,14 @@ private:
     bool installed_ = false;
 };
 
-void require_safe_gadget(const std::uint8_t* image, std::size_t image_size,
-                         const void* function) {
-    const auto sections = syscall::pe::read_sections(image, image_size);
+void require_safe_gadget(const support::LiveImage& image, const void* function) {
+    const auto sections = support::live_sections(image);
     SC_REQUIRE(sections.has_value());
     const auto gadget = syscall::find_syscall_gadget(
-        std::span<const std::uint8_t>(image, image_size), *sections);
+        std::span<const std::uint8_t>(image.bytes, image.size), *sections);
     SC_REQUIRE(gadget.has_value());
     const auto function_rva = static_cast<std::uint32_t>(
-        static_cast<const std::uint8_t*>(function) - image);
+        static_cast<const std::uint8_t*>(function) - image.bytes);
     SC_REQUIRE(*gadget < function_rva || *gadget >= function_rva + kHookPatchSize);
 }
 
@@ -104,15 +103,12 @@ SC_TEST_CASE("engine bypasses an inline hook on NtAllocateVirtualMemory") {
     SC_REQUIRE(allocate != nullptr);
     SC_REQUIRE(engine.commit() == syscall::Status::kOk);
 
-    const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    SC_REQUIRE(ntdll != nullptr);
-    const auto image = reinterpret_cast<const std::uint8_t*>(ntdll);
-    const auto image_size = syscall::pe::read_image_size(image, kPageSize);
-    SC_REQUIRE(image_size.has_value());
+    const auto ntdll = support::live_ntdll();
+    SC_REQUIRE(ntdll.bytes != nullptr);
     const auto live_allocate = reinterpret_cast<NtAllocateVirtualMemoryFn>(
-        reinterpret_cast<void*>(GetProcAddress(ntdll, "NtAllocateVirtualMemory")));
+        reinterpret_cast<void*>(GetProcAddress(ntdll.module, "NtAllocateVirtualMemory")));
     SC_REQUIRE(live_allocate != nullptr);
-    require_safe_gadget(image, *image_size, reinterpret_cast<const void*>(live_allocate));
+    require_safe_gadget(ntdll, reinterpret_cast<const void*>(live_allocate));
 
     g_hook_calls = 0;
     InlineHook hook(reinterpret_cast<void*>(live_allocate),

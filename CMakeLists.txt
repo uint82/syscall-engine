@@ -83,6 +83,7 @@ if(WIN32 AND SYSCALL_BUILD_TESTS)
         tests/test_main.cpp
         tests/windows/test_engine.cpp
         tests/windows/test_hook_poc.cpp
+        tests/windows/test_gadget_validation.cpp
         tests/windows/test_unwind_poc.cpp
         tests/windows/test_loader_poc.cpp
     )
