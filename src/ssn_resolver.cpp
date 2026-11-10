@@ -55,7 +55,7 @@ std::optional<CleanNeighbor> find_clean_neighbor(
             return std::nullopt;
         }
         const auto& candidate = exports[static_cast<std::size_t>(cursor)];
-        // Nt and Zw aliases share one code address and one syscall number.
+        // Nt and Zw are one syscall wearing two name tags, so they share a step.
         if (candidate.rva == rva) {
             continue;
         }
